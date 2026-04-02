@@ -152,7 +152,7 @@ export default function App() {
 
   return (
     <EffortsContext.Provider value={EFFORTS}>
-    <div style={{ maxWidth: 940, margin: '0 auto', padding: '20px 20px 40px' }}>
+    <div style={{ maxWidth: tab === 'kanban' ? 1400 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
       <Header currentDay={currentDay} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} />
       <StatsBar publishedCount={publishedCount} buffer={buffer} assignedCount={assignedCount} totalWords={totalWords} daysLeft={daysLeft} />
       <Legend />
