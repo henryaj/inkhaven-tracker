@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 const STORAGE_KEY = 'inkhaven-tracker-v3';
 const DAYS_IN_APRIL = 30;
@@ -22,18 +22,66 @@ const STATUS_ORDER = ['idea', 'inProgress', 'hitWordCount', 'readyToPublish', 'p
 
 function getCurrentDay() {
   const now = new Date();
-  if (now.getFullYear() === 2026 && now.getMonth() === 3) {
-    return now.getDate();
-  }
+  if (now.getFullYear() === 2026 && now.getMonth() === 3) return now.getDate();
   return 2;
+}
+
+function migrateOldData(old) {
+  const posts = [];
+  if (old.days) {
+    for (const [dayStr, entry] of Object.entries(old.days)) {
+      posts.push({
+        id: `day-${dayStr}-${Date.now()}`,
+        title: entry.title || '',
+        status: entry.status || 'idea',
+        effort: entry.effort || 'quick',
+        wordCount: entry.wordCount || 0,
+        link: entry.link || '',
+        day: Number(dayStr),
+      });
+    }
+  }
+  if (old.backlog) {
+    for (const item of old.backlog) {
+      posts.push({
+        id: item.id || `migrated-${Date.now()}-${Math.random()}`,
+        title: item.title || '',
+        status: item.status || 'idea',
+        effort: item.effort || 'quick',
+        wordCount: 0,
+        link: '',
+        day: null,
+      });
+    }
+  }
+  return { posts };
 }
 
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.posts) return parsed;
+      if (parsed.days || parsed.backlog) return migrateOldData(parsed);
+    }
   } catch (e) { /* ignore */ }
-  return { days: {}, backlog: [] };
+  return { posts: [] };
+}
+
+// Helpers to derive views from the unified posts list
+function getPostForDay(posts, day) {
+  return posts.find(p => p.day === day) || null;
+}
+function getDayMap(posts) {
+  const map = {};
+  for (const p of posts) {
+    if (p.day != null) map[p.day] = p;
+  }
+  return map;
+}
+function getUnassignedPosts(posts) {
+  return posts.filter(p => p.day == null);
 }
 
 export default function App() {
@@ -59,18 +107,17 @@ export default function App() {
 
   const reset = () => {
     if (confirm('Reset all data? This cannot be undone.')) {
-      const empty = { days: {}, backlog: [] };
-      save(empty);
+      save({ posts: [] });
       setModalDay(null);
     }
   };
 
-  // Stats
-  const days = data.days;
-  const backlog = data.backlog;
-  const publishedCount = Object.values(days).filter(d => d.status === 'published').length;
-  const assignedCount = Object.keys(days).length;
-  const totalWords = Object.values(days).reduce((sum, d) => sum + (d.wordCount || 0), 0);
+  const posts = data.posts;
+  const dayMap = getDayMap(posts);
+  const unassigned = getUnassignedPosts(posts);
+  const publishedCount = posts.filter(p => p.status === 'published').length;
+  const assignedCount = Object.keys(dayMap).length;
+  const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
   const buffer = publishedCount - currentDay;
   const daysLeft = DAYS_IN_APRIL - currentDay;
 
@@ -79,19 +126,19 @@ export default function App() {
       <Header currentDay={currentDay} onReset={reset} />
       <StatsBar publishedCount={publishedCount} buffer={buffer} assignedCount={assignedCount} totalWords={totalWords} daysLeft={daysLeft} />
       <Legend />
-      <Tabs tab={tab} setTab={setTab} backlogCount={backlog.length} />
+      <Tabs tab={tab} setTab={setTab} postCount={posts.length} />
 
       {tab === 'calendar' ? (
-        <Calendar days={days} currentDay={currentDay} onDayClick={setModalDay} />
+        <Calendar dayMap={dayMap} currentDay={currentDay} onDayClick={setModalDay} />
       ) : (
-        <Backlog backlog={backlog} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} />
+        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} />
       )}
 
       {modalDay !== null && (
         <EditModal
           day={modalDay}
-          entry={days[String(modalDay)]}
-          backlog={backlog}
+          entry={dayMap[modalDay] || null}
+          unassigned={unassigned}
           onClose={() => setModalDay(null)}
           update={update}
         />
@@ -178,7 +225,7 @@ function Legend() {
 
 // ─── Tabs ───
 
-function Tabs({ tab, setTab, backlogCount }) {
+function Tabs({ tab, setTab, postCount }) {
   const tabStyle = (active) => ({
     fontSize: 15, fontWeight: 600, padding: '8px 0', marginRight: 24, cursor: 'pointer',
     background: 'none', border: 'none', borderBottom: active ? '2.5px solid #6366f1' : '2.5px solid transparent',
@@ -187,14 +234,14 @@ function Tabs({ tab, setTab, backlogCount }) {
   return (
     <div style={{ borderBottom: '1px solid #e5e7eb', marginBottom: 16, display: 'flex' }}>
       <button style={tabStyle(tab === 'calendar')} onClick={() => setTab('calendar')}>Calendar</button>
-      <button style={tabStyle(tab === 'backlog')} onClick={() => setTab('backlog')}>Backlog ({backlogCount})</button>
+      <button style={tabStyle(tab === 'kanban')} onClick={() => setTab('kanban')}>Board ({postCount})</button>
     </div>
   );
 }
 
 // ─── Calendar ───
 
-function Calendar({ days, currentDay, onDayClick }) {
+function Calendar({ dayMap, currentDay, onDayClick }) {
   const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const cells = [];
   for (let i = 0; i < APRIL_1_DOW; i++) cells.push(null);
@@ -212,7 +259,7 @@ function Calendar({ days, currentDay, onDayClick }) {
         {cells.map((day, i) => day === null ? (
           <div key={`blank-${i}`} style={{ minHeight: 86 }} />
         ) : (
-          <DayCell key={day} day={day} entry={days[String(day)]} isToday={day === currentDay} isPast={day < currentDay} onClick={() => onDayClick(day)} />
+          <DayCell key={day} day={day} entry={dayMap[day] || null} isToday={day === currentDay} isPast={day < currentDay} onClick={() => onDayClick(day)} />
         ))}
       </div>
     </div>
@@ -280,7 +327,7 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
 
 // ─── Edit Modal ───
 
-function EditModal({ day, entry, backlog, onClose, update }) {
+function EditModal({ day, entry, unassigned, onClose, update }) {
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex',
@@ -296,14 +343,14 @@ function EditModal({ day, entry, backlog, onClose, update }) {
         {entry ? (
           <AssignedDayForm day={day} entry={entry} update={update} onClose={onClose} />
         ) : (
-          <EmptyDayForm day={day} backlog={backlog} update={update} onClose={onClose} />
+          <EmptyDayForm day={day} unassigned={unassigned} update={update} onClose={onClose} />
         )}
       </div>
     </div>
   );
 }
 
-function EmptyDayForm({ day, backlog, update, onClose }) {
+function EmptyDayForm({ day, unassigned, update, onClose }) {
   const [title, setTitle] = useState('');
   const inputRef = useRef(null);
 
@@ -313,16 +360,20 @@ function EmptyDayForm({ day, backlog, update, onClose }) {
     const t = title.trim();
     if (!t) return;
     update(d => {
-      d.days[String(day)] = { title: t, status: 'idea', effort, wordCount: 0, link: '' };
+      d.posts.push({
+        id: `post-${Date.now()}`,
+        title: t, status: 'idea', effort, wordCount: 0, link: '',
+        day,
+      });
       return d;
     });
     onClose();
   };
 
-  const assignFromBacklog = (item) => {
+  const assignExisting = (postId) => {
     update(d => {
-      d.days[String(day)] = { title: item.title, status: 'idea', effort: item.effort, wordCount: 0, link: '' };
-      d.backlog = d.backlog.filter(b => b.id !== item.id);
+      const post = d.posts.find(p => p.id === postId);
+      if (post) post.day = day;
       return d;
     });
     onClose();
@@ -331,7 +382,7 @@ function EmptyDayForm({ day, backlog, update, onClose }) {
   return (
     <>
       <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 12 }}>
-        No post assigned. Type a title or pick from your backlog.
+        No post assigned. Type a title or pick from your unassigned posts.
       </p>
       <input
         ref={inputRef}
@@ -351,13 +402,13 @@ function EmptyDayForm({ day, backlog, update, onClose }) {
         ))}
       </div>
 
-      {backlog.length > 0 && (
+      {unassigned.length > 0 && (
         <>
           <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>Assign from backlog</p>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>Assign an existing post</p>
           <div style={{ maxHeight: 200, overflow: 'auto' }}>
-            {backlog.map(item => (
-              <div key={item.id} onClick={() => assignFromBacklog(item)} style={{
+            {unassigned.map(item => (
+              <div key={item.id} onClick={() => assignExisting(item.id)} style={{
                 display: 'flex', alignItems: 'center', padding: '8px 10px', borderRadius: 8,
                 cursor: 'pointer', borderLeft: `4px solid ${EFFORTS[item.effort]?.border || '#e5e7eb'}`,
                 marginBottom: 4, transition: 'background 0.1s',
@@ -387,17 +438,23 @@ function AssignedDayForm({ day, entry, update, onClose }) {
 
   const saveAndClose = () => {
     update(d => {
-      d.days[String(day)] = { title, status, effort, wordCount: Number(wordCount) || 0, link };
+      const post = d.posts.find(p => p.id === entry.id);
+      if (post) {
+        post.title = title;
+        post.status = status;
+        post.effort = effort;
+        post.wordCount = Number(wordCount) || 0;
+        post.link = link;
+      }
       return d;
     });
     onClose();
   };
 
-  const removeToBacklog = () => {
+  const unassignFromDay = () => {
     update(d => {
-      const e = d.days[String(day)];
-      d.backlog.push({ id: `backlog-${Date.now()}`, title: e.title, effort: e.effort, status: e.status || 'idea' });
-      delete d.days[String(day)];
+      const post = d.posts.find(p => p.id === entry.id);
+      if (post) post.day = null;
       return d;
     });
     onClose();
@@ -429,11 +486,11 @@ function AssignedDayForm({ day, entry, update, onClose }) {
       <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://inkhaven.blog/…" style={inputStyle} />
 
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-        <button onClick={removeToBacklog} style={{
+        <button onClick={unassignFromDay} style={{
           flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
-          background: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: 14,
+          background: '#f3f4f6', color: '#6b7280', fontWeight: 600, fontSize: 14,
         }}>
-          Remove → backlog
+          Unassign from day
         </button>
         <button onClick={saveAndClose} style={{
           flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -446,9 +503,9 @@ function AssignedDayForm({ day, entry, update, onClose }) {
   );
 }
 
-// ─── Kanban Backlog ───
+// ─── Kanban Board ───
 
-function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget }) {
+function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget }) {
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
 
@@ -456,15 +513,20 @@ function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget
     const t = newTitle.trim();
     if (!t) return;
     update(d => {
-      d.backlog.push({ id: `new-${Date.now()}`, title: t, effort: newEffort, status: 'idea' });
+      d.posts.push({
+        id: `post-${Date.now()}`,
+        title: t, status: 'idea', effort: newEffort, wordCount: 0, link: '',
+        day: null,
+      });
       return d;
     });
     setNewTitle('');
   };
 
-  const removeItem = (id) => {
+  const removePost = (id) => {
+    if (!confirm('Permanently delete this post?')) return;
     update(d => {
-      d.backlog = d.backlog.filter(b => b.id !== id);
+      d.posts = d.posts.filter(p => p.id !== id);
       return d;
     });
   };
@@ -482,8 +544,8 @@ function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget
   const onDropOnColumn = (status) => {
     if (!dragId) return;
     update(d => {
-      const item = d.backlog.find(b => b.id === dragId);
-      if (item) item.status = status;
+      const post = d.posts.find(p => p.id === dragId);
+      if (post) post.status = status;
       return d;
     });
     setDragId(null);
@@ -493,13 +555,13 @@ function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget
   const onDropOnCard = (targetId, status) => {
     if (!dragId || dragId === targetId) return;
     update(d => {
-      const dragItem = d.backlog.find(b => b.id === dragId);
-      if (!dragItem) return d;
-      dragItem.status = status;
-      const filtered = d.backlog.filter(b => b.id !== dragId);
-      const targetIdx = filtered.findIndex(b => b.id === targetId);
-      filtered.splice(targetIdx, 0, dragItem);
-      d.backlog = filtered;
+      const dragPost = d.posts.find(p => p.id === dragId);
+      if (!dragPost) return d;
+      dragPost.status = status;
+      const filtered = d.posts.filter(p => p.id !== dragId);
+      const targetIdx = filtered.findIndex(p => p.id === targetId);
+      filtered.splice(targetIdx, 0, dragPost);
+      d.posts = filtered;
       return d;
     });
     setDragId(null);
@@ -509,14 +571,13 @@ function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget
   const columns = STATUS_ORDER.map(status => ({
     status,
     ...STATUSES[status],
-    items: backlog.filter(b => (b.status || 'idea') === status),
+    items: posts.filter(p => (p.status || 'idea') === status),
   }));
 
-  const isEmpty = backlog.length === 0;
+  const isEmpty = posts.length === 0;
 
   return (
     <div>
-      {/* Add row */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         <input
           value={newTitle}
@@ -538,7 +599,7 @@ function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget
 
       {isEmpty ? (
         <p style={{ textAlign: 'center', color: '#9ca3af', padding: 40, fontSize: 14 }}>
-          No ideas yet. Add new ones above.
+          No posts yet. Add new ones above.
         </p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STATUS_ORDER.length}, 1fr)`, gap: 10, overflowX: 'auto' }}>
@@ -585,9 +646,14 @@ function Backlog({ backlog, update, dragId, setDragId, dropTarget, setDropTarget
                       transition: 'opacity 0.15s',
                     }}
                   >
-                    <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, lineHeight: '1.3' }}>{item.title}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, lineHeight: '1.3', display: 'block' }}>{item.title}</span>
+                      {item.day != null && (
+                        <span style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, display: 'block' }}>Day {item.day}</span>
+                      )}
+                    </div>
                     <button
-                      onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+                      onClick={(e) => { e.stopPropagation(); removePost(item.id); }}
                       style={{
                         background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer',
                         fontSize: 14, padding: '0 0 0 8px', lineHeight: 1, flexShrink: 0,
