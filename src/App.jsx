@@ -342,7 +342,13 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
 
   return (
     <div
-      onClick={onClick}
+      onClick={e => {
+        if ((e.metaKey || e.ctrlKey) && hasPost && entry.link) {
+          window.open(entry.link, '_blank');
+        } else {
+          onClick();
+        }
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -388,6 +394,9 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
               overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1,
               color: isReady ? '#374151' : '#9ca3af',
               fontStyle: isReady ? 'normal' : 'italic',
+              textDecoration: entry.link ? 'underline' : 'none',
+              textDecorationColor: '#d1d5db',
+              textUnderlineOffset: 2,
             }}
           >{entry.title}</span>
           {entry.wordCount > 0 && (
@@ -738,7 +747,7 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
                   >
                     <EffortBar effort={item.effort} width={4} style={{ borderRadius: 8 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, lineHeight: '1.3', display: 'block' }}>{item.title}</span>
+                      <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, lineHeight: '1.3', display: 'block', textDecoration: item.link ? 'underline' : 'none', textDecorationColor: '#d1d5db', textUnderlineOffset: 2 }}>{item.title}</span>
                       {item.day != null && (
                         <span style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, display: 'block' }}>Day {item.day}</span>
                       )}
