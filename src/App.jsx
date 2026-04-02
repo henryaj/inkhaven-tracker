@@ -96,6 +96,10 @@ export default function App() {
           update={update}
         />
       )}
+
+      <footer style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
+        A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
+      </footer>
     </div>
   );
 }
