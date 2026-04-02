@@ -1,21 +1,33 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+
+const EffortsContext = createContext(null);
 
 const STORAGE_KEY = 'inkhaven-tracker-v3';
 const DAYS_IN_APRIL = 30;
 const APRIL_1_DOW = 2; // Wednesday, 0-indexed from Monday
 
-const EFFORTS = {
+const EFFORTS_DEFAULT = {
   quick: { label: 'Quick', color: '#059669', border: '#34d399', bg: '#ecfdf5' },
   medium: { label: 'Medium', color: '#d97706', border: '#fbbf24', bg: '#fffbeb' },
   flagship: { label: 'Flagship', color: '#dc2626', border: '#f87171', bg: '#fef2f2' },
 };
 
+const EFFORTS_COLORBLIND = {
+  quick: { label: 'Quick', color: '#2563eb', border: '#60a5fa', bg: '#eff6ff' },
+  medium: { label: 'Medium', color: '#c2410c', border: '#fb923c', bg: '#fff7ed' },
+  flagship: { label: 'Flagship', color: '#9333ea', border: '#c084fc', bg: '#faf5ff' },
+};
+
+function getEfforts(colorblind) {
+  return colorblind ? EFFORTS_COLORBLIND : EFFORTS_DEFAULT;
+}
+
 const STATUSES = {
-  idea: { label: 'Idea', icon: '○', color: '#6366f1', bg: '#eef2ff' },
-  inProgress: { label: 'In Progress', icon: '✎', color: '#d97706', bg: '#fffbeb' },
-  hitWordCount: { label: 'Hit Word Count', icon: '✓', color: '#059669', bg: '#ecfdf5' },
-  readyToPublish: { label: 'Ready to Publish', icon: '◈', color: '#7c3aed', bg: '#f5f3ff' },
-  published: { label: 'Published', icon: '✓', color: '#059669', bg: '#ecfdf5' },
+  idea: { label: 'Idea', icon: '○', color: '#a5b4fc', bg: '#eef2ff' },
+  inProgress: { label: 'In Progress', icon: '✎', color: '#818cf8', bg: '#e8ecff' },
+  hitWordCount: { label: 'Hit Word Count', icon: '✓', color: '#6366f1', bg: '#e0e4ff' },
+  readyToPublish: { label: 'Ready to Publish', icon: '◈', color: '#4f46e5', bg: '#dbe0fe' },
+  published: { label: 'Published', icon: '✓', color: '#4338ca', bg: '#d4d8fc' },
 };
 
 const STATUS_ORDER = ['idea', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
@@ -90,7 +102,17 @@ export default function App() {
   const [modalDay, setModalDay] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
+  const [colorblind, setColorblind] = useState(() => localStorage.getItem('inkhaven-colorblind') === 'true');
   const currentDay = getCurrentDay();
+  const EFFORTS = getEfforts(colorblind);
+
+  const toggleColorblind = () => {
+    setColorblind(prev => {
+      const next = !prev;
+      localStorage.setItem('inkhaven-colorblind', String(next));
+      return next;
+    });
+  };
 
   const save = useCallback((newData) => {
     setData(newData);
@@ -122,8 +144,9 @@ export default function App() {
   const daysLeft = DAYS_IN_APRIL - currentDay;
 
   return (
+    <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: 940, margin: '0 auto', padding: '20px 20px 40px' }}>
-      <Header currentDay={currentDay} onReset={reset} />
+      <Header currentDay={currentDay} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} />
       <StatsBar publishedCount={publishedCount} buffer={buffer} assignedCount={assignedCount} totalWords={totalWords} daysLeft={daysLeft} />
       <Legend />
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} />
@@ -148,12 +171,17 @@ export default function App() {
         A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
       </footer>
     </div>
+    </EffortsContext.Provider>
   );
 }
 
 // ─── Header ───
 
-function Header({ currentDay, onReset }) {
+function Header({ currentDay, onReset, colorblind, onToggleColorblind }) {
+  const btnStyle = {
+    fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
+    background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
+  };
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
       <div>
@@ -167,10 +195,17 @@ function Header({ currentDay, onReset }) {
           Data is saved in your browser's local storage and won't sync across devices.
         </p>
       </div>
-      <button onClick={onReset} style={{
-        fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
-        background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
-      }}>Reset</button>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={onToggleColorblind} style={{
+          ...btnStyle,
+          background: colorblind ? '#eef2ff' : '#fff',
+          color: colorblind ? '#6366f1' : '#6b7280',
+          borderColor: colorblind ? '#c7d2fe' : '#e5e7eb',
+        }} title="Toggle colourblind-friendly palette">
+          {colorblind ? 'CB on' : 'CB off'}
+        </button>
+        <button onClick={onReset} style={btnStyle}>Reset</button>
+      </div>
     </div>
   );
 }
@@ -200,6 +235,7 @@ function StatsBar({ publishedCount, buffer, assignedCount, totalWords, daysLeft 
 // ─── Legend ───
 
 function Legend() {
+  const EFFORTS = useContext(EffortsContext);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, fontSize: 13, color: '#6b7280', flexWrap: 'wrap' }}>
       <span style={{ fontWeight: 600 }}>Effort:</span>
@@ -267,6 +303,7 @@ function Calendar({ dayMap, currentDay, onDayClick }) {
 }
 
 function DayCell({ day, entry, isToday, isPast, onClick }) {
+  const EFFORTS = useContext(EffortsContext);
   const [hovered, setHovered] = useState(false);
   const hasPost = !!entry;
   const isPublished = hasPost && entry.status === 'published';
@@ -351,6 +388,7 @@ function EditModal({ day, entry, unassigned, onClose, update }) {
 }
 
 function EmptyDayForm({ day, unassigned, update, onClose }) {
+  const EFFORTS = useContext(EffortsContext);
   const [title, setTitle] = useState('');
   const inputRef = useRef(null);
 
@@ -430,6 +468,7 @@ function EmptyDayForm({ day, unassigned, update, onClose }) {
 }
 
 function AssignedDayForm({ day, entry, update, onClose }) {
+  const EFFORTS = useContext(EffortsContext);
   const [title, setTitle] = useState(entry.title);
   const [status, setStatus] = useState(entry.status);
   const [effort, setEffort] = useState(entry.effort);
@@ -506,6 +545,7 @@ function AssignedDayForm({ day, entry, update, onClose }) {
 // ─── Kanban Board ───
 
 function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget }) {
+  const EFFORTS = useContext(EffortsContext);
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
 
@@ -610,7 +650,7 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget })
               onDragLeave={() => setDropTarget(null)}
               onDrop={(e) => { e.preventDefault(); onDropOnColumn(col.status); }}
               style={{
-                background: dropTarget === col.status ? col.bg : '#f9fafb',
+                background: dropTarget === col.status ? col.bg : `${col.bg}99`,
                 borderRadius: 10, padding: 10, minHeight: 120, minWidth: 140,
                 border: dropTarget === col.status ? `2px dashed ${col.color}` : '2px solid transparent',
                 transition: 'background 0.15s, border 0.15s',
