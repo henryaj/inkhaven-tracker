@@ -15,8 +15,8 @@ const EFFORTS_BASE = {
 // Patterns for colorblind mode — applied as backgroundImage on effort bars
 const CB_PATTERNS = {
   quick: null, // solid, no pattern
-  medium: (color) => `repeating-linear-gradient(0deg, ${color}, ${color} 3px, transparent 3px, transparent 6px)`,
-  flagship: (color) => `repeating-linear-gradient(45deg, ${color}, ${color} 2px, transparent 2px, transparent 5px)`,
+  medium: (color) => `repeating-linear-gradient(0deg, ${color}, ${color} 3px, #fff 3px, #fff 6px)`,
+  flagship: (color) => `repeating-linear-gradient(45deg, ${color}, ${color} 2px, #fff 2px, #fff 5px)`,
 };
 
 function getEfforts(colorblind) {
@@ -751,7 +751,7 @@ function EffortBar({ effort, width = 5, style = {} }) {
       <div style={{
         position: 'absolute', left: 0, top: 0, bottom: 0, width,
         borderRadius: `${style.borderRadius || 10}px 0 0 ${style.borderRadius || 10}px`,
-        backgroundImage: info.pattern, backgroundColor: info.border,
+        backgroundImage: info.pattern,
         ...style,
       }} />
     );
