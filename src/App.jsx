@@ -138,9 +138,10 @@ export default function App() {
   const dayMap = getDayMap(posts);
   const unassigned = getUnassignedPosts(posts);
   const publishedCount = posts.filter(p => p.status === 'published').length;
+  const readyOrPublishedScheduled = posts.filter(p => p.day != null && (p.status === 'readyToPublish' || p.status === 'published')).length;
   const assignedCount = Object.keys(dayMap).length;
   const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
-  const buffer = publishedCount - currentDay;
+  const buffer = readyOrPublishedScheduled - currentDay;
   const daysLeft = DAYS_IN_APRIL - currentDay;
 
   return (
@@ -253,7 +254,11 @@ function Legend() {
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ width: 18, height: 18, borderRadius: 4, background: '#f3f4f6', color: '#6b7280', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>○</span>
-        Not yet
+        Ready
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ width: 18, height: 18, borderRadius: 4, background: '#f3f4f6', color: '#9ca3af', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>◌</span>
+        In progress
       </span>
     </div>
   );
@@ -333,24 +338,35 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}</span>
         {hasPost && (() => {
-          const st = STATUSES[entry.status] || STATUSES.idea;
+          const isReady = entry.status === 'readyToPublish' || entry.status === 'published';
+          let icon, color, badgeBg;
+          if (entry.status === 'published') {
+            icon = '✓'; color = '#059669'; badgeBg = '#ecfdf5';
+          } else if (entry.status === 'readyToPublish') {
+            icon = '○'; color = '#6b7280'; badgeBg = '#f3f4f6';
+          } else {
+            icon = '◌'; color = '#9ca3af'; badgeBg = '#f3f4f6';
+          }
           return (
             <span style={{
               fontSize: 10, width: 20, height: 20, borderRadius: 5, display: 'inline-flex',
               alignItems: 'center', justifyContent: 'center', fontWeight: 700,
-              color: st.color, background: st.bg,
+              color, background: badgeBg,
             }}>
-              {st.icon}
+              {icon}
             </span>
           );
         })()}
       </div>
       {hasPost ? (
         <>
-          <span style={{
-            fontSize: 12.5, fontWeight: 500, color: '#374151', lineHeight: '1.3',
-            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1,
-          }}>{entry.title}</span>
+          <span
+            title={STATUSES[entry.status]?.label || 'Idea'}
+            style={{
+              fontSize: 12.5, fontWeight: 500, color: '#374151', lineHeight: '1.3',
+              overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1,
+            }}
+          >{entry.title}</span>
           {entry.wordCount > 0 && (
             <span style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{entry.wordCount.toLocaleString()}w</span>
           )}
