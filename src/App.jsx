@@ -332,16 +332,18 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}</span>
-        {hasPost && (
-          <span style={{
-            fontSize: 10, width: 20, height: 20, borderRadius: 5, display: 'inline-flex',
-            alignItems: 'center', justifyContent: 'center', fontWeight: 700,
-            color: isPublished ? '#059669' : '#6b7280',
-            background: isPublished ? '#ecfdf5' : '#f3f4f6',
-          }}>
-            {isPublished ? '✓' : '○'}
-          </span>
-        )}
+        {hasPost && (() => {
+          const st = STATUSES[entry.status] || STATUSES.idea;
+          return (
+            <span style={{
+              fontSize: 10, width: 20, height: 20, borderRadius: 5, display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', fontWeight: 700,
+              color: st.color, background: st.bg,
+            }}>
+              {st.icon}
+            </span>
+          );
+        })()}
       </div>
       {hasPost ? (
         <>
