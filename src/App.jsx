@@ -6,20 +6,26 @@ const STORAGE_KEY = 'inkhaven-tracker-v3';
 const DAYS_IN_APRIL = 30;
 const APRIL_1_DOW = 2; // Wednesday, 0-indexed from Monday
 
-const EFFORTS_DEFAULT = {
+const EFFORTS_BASE = {
   quick: { label: 'Quick', color: '#059669', border: '#34d399', bg: '#ecfdf5' },
   medium: { label: 'Medium', color: '#d97706', border: '#fbbf24', bg: '#fffbeb' },
   flagship: { label: 'Flagship', color: '#dc2626', border: '#f87171', bg: '#fef2f2' },
 };
 
-const EFFORTS_COLORBLIND = {
-  quick: { label: 'Quick', color: '#2563eb', border: '#60a5fa', bg: '#eff6ff' },
-  medium: { label: 'Medium', color: '#c2410c', border: '#fb923c', bg: '#fff7ed' },
-  flagship: { label: 'Flagship', color: '#9333ea', border: '#c084fc', bg: '#faf5ff' },
+// Patterns for colorblind mode — applied as backgroundImage on effort bars
+const CB_PATTERNS = {
+  quick: null, // solid, no pattern
+  medium: (color) => `repeating-linear-gradient(0deg, ${color}, ${color} 3px, transparent 3px, transparent 6px)`,
+  flagship: (color) => `repeating-linear-gradient(45deg, ${color}, ${color} 2px, transparent 2px, transparent 5px)`,
 };
 
 function getEfforts(colorblind) {
-  return colorblind ? EFFORTS_COLORBLIND : EFFORTS_DEFAULT;
+  if (!colorblind) return EFFORTS_BASE;
+  const efforts = {};
+  for (const [k, v] of Object.entries(EFFORTS_BASE)) {
+    efforts[k] = { ...v, pattern: CB_PATTERNS[k] ? CB_PATTERNS[k](v.border) : null };
+  }
+  return efforts;
 }
 
 const STATUSES = {
@@ -242,7 +248,7 @@ function Legend() {
       <span style={{ fontWeight: 600 }}>Effort:</span>
       {Object.entries(EFFORTS).map(([k, v]) => (
         <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: v.border, display: 'inline-block' }} />
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: v.border, backgroundImage: v.pattern || 'none', display: 'inline-block' }} />
           {v.label}
         </span>
       ))}
@@ -328,14 +334,14 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
         minHeight: 86, borderRadius: 10, padding: '6px 8px', cursor: 'pointer',
         background: bg,
         border: isToday ? '2.5px solid #6366f1' : '1px solid #f0f0f0',
-        borderLeftWidth: hasPost ? 5 : undefined,
-        borderLeftColor: hasPost ? EFFORTS[entry.effort]?.border : undefined,
+        ...(hasPost ? getEffortBorderStyle(EFFORTS, entry.effort, 5) : {}),
         transform: hovered ? 'translateY(-1px)' : 'none',
         boxShadow: hovered ? '0 3px 12px rgba(0,0,0,0.08)' : 'none',
         transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-        display: 'flex', flexDirection: 'column', position: 'relative',
+        display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden',
       }}
     >
+      {hasPost && <EffortBar effort={entry.effort} width={5} style={{ borderRadius: 10 }} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}</span>
         {hasPost && (() => {
@@ -468,12 +474,13 @@ function EmptyDayForm({ day, unassigned, update, onClose }) {
             {unassigned.map(item => (
               <div key={item.id} onClick={() => assignExisting(item.id)} style={{
                 display: 'flex', alignItems: 'center', padding: '8px 10px', borderRadius: 8,
-                cursor: 'pointer', borderLeft: `4px solid ${EFFORTS[item.effort]?.border || '#e5e7eb'}`,
-                marginBottom: 4, transition: 'background 0.1s',
+                cursor: 'pointer', ...getEffortBorderStyle(EFFORTS, item.effort, 4),
+                marginBottom: 4, transition: 'background 0.1s', position: 'relative', overflow: 'hidden',
               }}
               onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
+                <EffortBar effort={item.effort} width={4} style={{ borderRadius: 8 }} />
                 <span style={{ flex: 1, fontSize: 14, color: '#374151' }}>{item.title}</span>
                 <span style={{ fontSize: 12, color: EFFORTS[item.effort]?.color, fontWeight: 500 }}>
                   {EFFORTS[item.effort]?.label}
@@ -697,15 +704,17 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget })
                     onDrop={e => { e.preventDefault(); e.stopPropagation(); onDropOnCard(item.id, col.status); }}
                     style={{
                       background: '#fff', borderRadius: 8, padding: '8px 10px', marginBottom: 6,
-                      borderLeft: `4px solid ${effortInfo.border}`,
+                      ...getEffortBorderStyle(EFFORTS, item.effort, 4),
                       boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                       opacity: dragId === item.id ? 0.4 : 1,
                       cursor: 'grab',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       borderTop: dropTarget === item.id && dragId !== item.id ? `2px solid ${col.color}` : '2px solid transparent',
                       transition: 'opacity 0.15s',
+                      position: 'relative', overflow: 'hidden',
                     }}
                   >
+                    <EffortBar effort={item.effort} width={4} style={{ borderRadius: 8 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, lineHeight: '1.3', display: 'block' }}>{item.title}</span>
                       {item.day != null && (
@@ -730,6 +739,31 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget })
       )}
     </div>
   );
+}
+
+// ─── Effort Bar ───
+
+function EffortBar({ effort, width = 5, style = {} }) {
+  const EFFORTS = useContext(EffortsContext);
+  const info = EFFORTS[effort] || EFFORTS.quick;
+  if (info.pattern) {
+    return (
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0, width,
+        borderRadius: `${style.borderRadius || 10}px 0 0 ${style.borderRadius || 10}px`,
+        backgroundImage: info.pattern, backgroundColor: info.border,
+        ...style,
+      }} />
+    );
+  }
+  return null;
+}
+
+function getEffortBorderStyle(EFFORTS, effort, width = 5) {
+  const info = EFFORTS[effort];
+  if (!info) return {};
+  if (info.pattern) return { paddingLeft: width + 4 };
+  return { borderLeftWidth: width, borderLeftColor: info.border, borderLeftStyle: 'solid' };
 }
 
 // ─── Shared Styles ───
