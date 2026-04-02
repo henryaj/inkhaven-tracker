@@ -112,6 +112,9 @@ function Header({ currentDay, onReset }) {
         <p style={{ fontSize: 15, color: '#6b7280', marginTop: 4 }}>
           April 2026 · Day {currentDay} of 30 · 500+ words daily
         </p>
+        <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+          Data is saved in your browser's local storage and won't sync across devices.
+        </p>
       </div>
       <button onClick={onReset} style={{
         fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
@@ -128,7 +131,7 @@ function StatsBar({ publishedCount, buffer, assignedCount, totalWords, daysLeft 
     { label: `✓ ${publishedCount}/30`, color: '#059669', bg: '#ecfdf5' },
     { label: buffer >= 0 ? `+${buffer} ahead` : `${buffer} behind`, color: buffer >= 0 ? '#059669' : '#dc2626', bg: buffer >= 0 ? '#ecfdf5' : '#fef2f2' },
     { label: `${assignedCount} assigned`, color: '#6366f1', bg: '#eef2ff' },
-    { label: `${totalWords.toLocaleString()} words`, color: '#6b7280', bg: '#f3f4f6' },
+    ...(totalWords > 0 ? [{ label: `${totalWords.toLocaleString()} words`, color: '#6b7280', bg: '#f3f4f6' }] : []),
     { label: `${daysLeft}d left`, color: '#6b7280', bg: '#f3f4f6' },
   ];
   return (
@@ -230,7 +233,7 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
       style={{
         minHeight: 86, borderRadius: 10, padding: '6px 8px', cursor: 'pointer',
         background: bg,
-        border: isToday ? '2.5px solid #6366f1' : '1px solid #e5e7eb',
+        border: isToday ? '2.5px solid #6366f1' : '1px solid #f0f0f0',
         borderLeftWidth: hasPost ? 5 : undefined,
         borderLeftColor: hasPost ? EFFORTS[entry.effort]?.border : undefined,
         transform: hovered ? 'translateY(-1px)' : 'none',
