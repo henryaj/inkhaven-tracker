@@ -106,6 +106,7 @@ export default function App() {
   const [data, setData] = useState(loadData);
   const [tab, setTab] = useState('calendar');
   const [modalDay, setModalDay] = useState(null);
+  const [modalPostId, setModalPostId] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [colorblind, setColorblind] = useState(() => localStorage.getItem('inkhaven-colorblind') === 'true');
@@ -161,7 +162,7 @@ export default function App() {
       {tab === 'calendar' ? (
         <Calendar dayMap={dayMap} currentDay={currentDay} onDayClick={setModalDay} />
       ) : (
-        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} />
+        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} />
       )}
 
       {modalDay !== null && (
@@ -173,6 +174,20 @@ export default function App() {
           update={update}
         />
       )}
+
+      {modalPostId !== null && (() => {
+        const post = posts.find(p => p.id === modalPostId);
+        if (!post) return null;
+        return (
+          <EditModal
+            day={post.day}
+            entry={post}
+            unassigned={unassigned}
+            onClose={() => setModalPostId(null)}
+            update={update}
+          />
+        );
+      })()}
 
       <footer style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
         A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
@@ -571,7 +586,7 @@ function AssignedDayForm({ day, entry, update, onClose }) {
 
 // ─── Kanban Board ───
 
-function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget }) {
+function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, onCardClick }) {
   const EFFORTS = useContext(EffortsContext);
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
@@ -702,12 +717,19 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget })
                     onDragEnd={onDragEnd}
                     onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropTarget(item.id); }}
                     onDrop={e => { e.preventDefault(); e.stopPropagation(); onDropOnCard(item.id, col.status); }}
+                    onClick={e => {
+                      if (e.metaKey || e.ctrlKey) {
+                        if (item.link) window.open(item.link, '_blank');
+                      } else {
+                        onCardClick(item.id);
+                      }
+                    }}
                     style={{
                       background: '#fff', borderRadius: 8, padding: '8px 10px', marginBottom: 6,
                       ...getEffortBorderStyle(EFFORTS, item.effort, 4),
                       boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                       opacity: dragId === item.id ? 0.4 : 1,
-                      cursor: 'grab',
+                      cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       borderTop: dropTarget === item.id && dragId !== item.id ? `2px solid ${col.color}` : '2px solid transparent',
                       transition: 'opacity 0.15s',
