@@ -146,7 +146,7 @@ export default function App() {
   const unassigned = getUnassignedPosts(posts);
   const publishedCount = posts.filter(p => p.status === 'published').length;
   const readyOrPublishedScheduled = posts.filter(p => p.day != null && (p.status === 'readyToPublish' || p.status === 'published')).length;
-  const assignedCount = Object.keys(dayMap).length;
+  const assignedCount = posts.filter(p => p.day != null && p.status !== 'published').length;
   const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
   const buffer = readyOrPublishedScheduled - currentDay;
   const daysLeft = DAYS_IN_APRIL - currentDay;
