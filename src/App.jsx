@@ -7,6 +7,7 @@ const DAYS_IN_APRIL = 30;
 const APRIL_1_DOW = 2; // Wednesday, 0-indexed from Monday
 
 const EFFORTS_BASE = {
+  unset: { label: 'Unset', color: '#9ca3af', border: '#d1d5db', bg: '#f9fafb' },
   quick: { label: 'Quick', color: '#059669', border: '#34d399', bg: '#ecfdf5' },
   medium: { label: 'Medium', color: '#d97706', border: '#fbbf24', bg: '#fffbeb' },
   flagship: { label: 'Flagship', color: '#dc2626', border: '#f87171', bg: '#fef2f2' },
@@ -14,6 +15,7 @@ const EFFORTS_BASE = {
 
 // Patterns for colorblind mode — applied as backgroundImage on effort bars
 const CB_PATTERNS = {
+  unset: null, // solid, no pattern
   quick: null, // solid, no pattern
   medium: (color) => `repeating-linear-gradient(0deg, ${color}, ${color} 3px, #fff 3px, #fff 6px)`,
   flagship: (color) => `repeating-linear-gradient(45deg, ${color}, ${color} 2px, #fff 2px, #fff 5px)`,
@@ -109,6 +111,7 @@ export default function App() {
   const [modalPostId, setModalPostId] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
+  const [showImport, setShowImport] = useState(false);
   const [colorblind, setColorblind] = useState(() => localStorage.getItem('inkhaven-colorblind') === 'true');
   const currentDay = getCurrentDay();
   const EFFORTS = getEfforts(colorblind);
@@ -162,7 +165,7 @@ export default function App() {
       {tab === 'calendar' ? (
         <Calendar dayMap={dayMap} currentDay={currentDay} onDayClick={setModalDay} />
       ) : (
-        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} />
+        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} />
       )}
 
       {modalDay !== null && (
@@ -188,6 +191,13 @@ export default function App() {
           />
         );
       })()}
+
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          update={update}
+        />
+      )}
 
       <footer style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
         A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
@@ -595,7 +605,7 @@ function AssignedDayForm({ day, entry, update, onClose }) {
 
 // ─── Kanban Board ───
 
-function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, onCardClick }) {
+function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, onCardClick, onImport }) {
   const EFFORTS = useContext(EffortsContext);
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
@@ -686,6 +696,10 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
           padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6366f1',
           color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
         }}>Add</button>
+        <button onClick={onImport} style={{
+          padding: '8px 18px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff',
+          color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
+        }}>Import</button>
       </div>
 
       {isEmpty ? (
@@ -768,6 +782,80 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Import Modal ───
+
+function ImportModal({ onClose, update }) {
+  const [text, setText] = useState('');
+  const textareaRef = useRef(null);
+
+  useEffect(() => { textareaRef.current?.focus(); }, []);
+
+  const doImport = () => {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return;
+    update(d => {
+      for (const title of lines) {
+        d.posts.push({
+          id: `import-${Date.now()}-${Math.random()}`,
+          title, status: 'idea', effort: 'unset', wordCount: 0, link: '',
+          day: null,
+        });
+      }
+      return d;
+    });
+    onClose();
+  };
+
+  const lineCount = text.split('\n').filter(l => l.trim().length > 0).length;
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 500,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+      }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: '#1f2937' }}>
+          Import ideas
+        </h2>
+        <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 12 }}>
+          One post title per line. All imported as ideas with unset effort.
+        </p>
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder={'My first post idea\nAnother post idea\nA third one'}
+          rows={10}
+          style={{
+            ...inputStyle, marginBottom: 8, resize: 'vertical',
+            minHeight: 160, lineHeight: '1.6',
+          }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: '#9ca3af' }}>
+            {lineCount} {lineCount === 1 ? 'idea' : 'ideas'}
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={{
+              padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb',
+              background: '#fff', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            }}>Cancel</button>
+            <button onClick={doImport} disabled={lineCount === 0} style={{
+              padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: lineCount > 0 ? '#6366f1' : '#e5e7eb',
+              color: lineCount > 0 ? '#fff' : '#9ca3af',
+              fontWeight: 600, fontSize: 14,
+            }}>Import {lineCount > 0 ? lineCount : ''}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
