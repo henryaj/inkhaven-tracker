@@ -208,7 +208,7 @@ function Header({ currentDay, onReset, colorblind, onToggleColorblind }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
       <div>
         <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: '#1f2937', margin: 0 }}>
-          Inkhaven Tracker
+          ✍️ Inkhaven Tracker
         </h1>
         <p style={{ fontSize: 15, color: '#6b7280', marginTop: 4 }}>
           April 2026 · Day {currentDay} of 30 · 500+ words daily
