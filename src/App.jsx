@@ -1,8 +1,57 @@
-import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+import { useState, useCallback, useEffect, useRef, useLayoutEffect, createContext, useContext } from 'react';
+import confetti from 'canvas-confetti';
 
 const EffortsContext = createContext(null);
 
 const STORAGE_KEY = 'inkhaven-tracker-v3';
+
+function fireConfetti() {
+  confetti({
+    particleCount: 80,
+    spread: 60,
+    origin: { y: 0.7 },
+    colors: ['#6366f1', '#16a34a', '#fbbf24', '#f87171', '#34d399'],
+  });
+}
+
+const CHANGELOG = [
+  {
+    date: '2026-04-06',
+    changes: [
+      'Added right-click context menu on calendar days (edit, mark published, unassign)',
+      'Added confetti effect when marking posts as published',
+      'Added confirmation when dragging unassigned posts to published column',
+      'Added changelog button',
+      'Enter key submits edit modal, Escape dismisses it',
+    ],
+  },
+  {
+    date: '2026-04-04',
+    changes: ['Added bulk import modal and unset effort tier'],
+  },
+  {
+    date: '2026-04-03',
+    changes: [
+      'Added writing emoji to page title',
+      'Added Open Graph and Twitter meta tags for link previews',
+    ],
+  },
+  {
+    date: '2026-04-02',
+    changes: [
+      'Exclude published posts from assigned count',
+      'Added Vercel Web Analytics',
+      'Underline posts with links, cmd-click to open from calendar',
+      'Click kanban cards to edit, cmd-click to open link',
+      'Widen layout to 1400px on kanban tab',
+      'Colorblind mode with stripe patterns',
+      'Simpler calendar badges with status tooltips',
+      'Indigo gradient for kanban columns, Geist font',
+      'Unified data model: calendar and kanban share single posts array',
+      'Initial Inkhaven Tracker app',
+    ],
+  },
+];
 const DAYS_IN_APRIL = 30;
 const APRIL_1_DOW = 2; // Wednesday, 0-indexed from Monday
 
@@ -35,7 +84,7 @@ const STATUSES = {
   inProgress: { label: 'In Progress', icon: '✎', color: '#818cf8', bg: '#e8ecff' },
   hitWordCount: { label: 'Hit Word Count', icon: '✓', color: '#6366f1', bg: '#e0e4ff' },
   readyToPublish: { label: 'Ready to Publish', icon: '◈', color: '#4f46e5', bg: '#dbe0fe' },
-  published: { label: 'Published', icon: '✓', color: '#4338ca', bg: '#d4d8fc' },
+  published: { label: 'Published', icon: '✓', color: '#16a34a', bg: '#dcfce7' },
 };
 
 const STATUS_ORDER = ['idea', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
@@ -77,7 +126,29 @@ function migrateOldData(old) {
   return { posts };
 }
 
+const SEED_DATA = { posts: [
+  { id: 's1', title: 'Why I quit social media for a month', status: 'published', effort: 'flagship', wordCount: 2200, day: 1 },
+  { id: 's2', title: '5 journaling prompts that actually work', status: 'published', effort: 'medium', wordCount: 1100, day: 2 },
+  { id: 's3', title: 'The case for writing by hand', status: 'published', effort: 'quick', wordCount: 600, day: 3 },
+  { id: 's4', title: 'Book review: Bird by Bird', status: 'published', effort: 'medium', wordCount: 1400, day: 4 },
+  { id: 's5', title: 'How to outline a blog post in 10 min', status: 'readyToPublish', effort: 'quick', wordCount: 750, day: 5 },
+  { id: 's6', title: 'My morning writing routine', status: 'readyToPublish', effort: 'medium', wordCount: 900, day: 6 },
+  { id: 's7', title: 'Lessons from 100 days of blogging', status: 'readyToPublish', effort: 'flagship', wordCount: 1800, day: 7 },
+  { id: 's8', title: 'Writing when you don\'t feel like it', status: 'hitWordCount', effort: 'medium', wordCount: 1050, day: 8 },
+  { id: 's9', title: 'Finding your voice online', status: 'hitWordCount', effort: 'quick', wordCount: 500, day: 9 },
+  { id: 's10', title: 'What makes a great opening line?', status: 'inProgress', effort: 'medium', wordCount: 300, day: 10 },
+  { id: 's11', title: 'Editing tips from a recovering perfectionist', status: 'inProgress', effort: 'flagship', wordCount: 400, day: null },
+  { id: 's12', title: 'The power of writing in public', status: 'idea', effort: 'medium', wordCount: 0, day: null },
+  { id: 's13', title: 'How to handle negative comments', status: 'idea', effort: 'quick', wordCount: 0, day: null },
+  { id: 's14', title: 'Newsletter vs blog: which is better?', status: 'idea', effort: 'flagship', wordCount: 0, day: null },
+  { id: 's15', title: 'Content repurposing strategies', status: 'readyToPublish', effort: 'medium', wordCount: 1200, day: null },
+  { id: 's16', title: 'SEO basics for writers', status: 'idea', effort: 'medium', wordCount: 0, day: null },
+]};
+
 function loadData() {
+  if (new URLSearchParams(window.location.search).has('seed')) {
+    return SEED_DATA;
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -112,6 +183,8 @@ export default function App() {
   const [dragId, setDragId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [showImport, setShowImport] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [showChangelog, setShowChangelog] = useState(false);
   const [colorblind, setColorblind] = useState(() => localStorage.getItem('inkhaven-colorblind') === 'true');
   const currentDay = getCurrentDay();
   const EFFORTS = getEfforts(colorblind);
@@ -149,6 +222,7 @@ export default function App() {
   const unassigned = getUnassignedPosts(posts);
   const publishedCount = posts.filter(p => p.status === 'published').length;
   const readyOrPublishedScheduled = posts.filter(p => p.day != null && (p.status === 'readyToPublish' || p.status === 'published')).length;
+  const readyCount = posts.filter(p => p.status === 'readyToPublish').length;
   const assignedCount = posts.filter(p => p.day != null && p.status !== 'published').length;
   const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
   const buffer = readyOrPublishedScheduled - currentDay;
@@ -157,13 +231,13 @@ export default function App() {
   return (
     <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: tab === 'kanban' ? 1400 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
-      <Header currentDay={currentDay} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} />
-      <StatsBar publishedCount={publishedCount} buffer={buffer} assignedCount={assignedCount} totalWords={totalWords} daysLeft={daysLeft} />
+      <Header currentDay={currentDay} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
+      <StatsBar publishedCount={publishedCount} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
       <Legend />
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} />
 
       {tab === 'calendar' ? (
-        <Calendar dayMap={dayMap} currentDay={currentDay} onDayClick={setModalDay} />
+        <Calendar dayMap={dayMap} currentDay={currentDay} onDayClick={setModalDay} onContextMenu={setContextMenu} />
       ) : (
         <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} />
       )}
@@ -199,6 +273,44 @@ export default function App() {
         />
       )}
 
+      {contextMenu && (() => {
+        const post = posts.find(p => p.id === contextMenu.postId);
+        if (!post) return null;
+        return (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            post={post}
+            onEdit={() => {
+              setModalDay(contextMenu.day);
+              setContextMenu(null);
+            }}
+            onMarkPublished={() => {
+              update(d => {
+                const p = d.posts.find(p => p.id === contextMenu.postId);
+                if (p) p.status = 'published';
+                return d;
+              });
+              fireConfetti();
+              setContextMenu(null);
+            }}
+            onUnassign={() => {
+              update(d => {
+                const p = d.posts.find(p => p.id === contextMenu.postId);
+                if (p) p.day = null;
+                return d;
+              });
+              setContextMenu(null);
+            }}
+            onClose={() => setContextMenu(null)}
+          />
+        );
+      })()}
+
+      {showChangelog && (
+        <ChangelogModal onClose={() => setShowChangelog(false)} />
+      )}
+
       <footer style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
         A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
       </footer>
@@ -209,7 +321,7 @@ export default function App() {
 
 // ─── Header ───
 
-function Header({ currentDay, onReset, colorblind, onToggleColorblind }) {
+function Header({ currentDay, onReset, colorblind, onToggleColorblind, onShowChangelog }) {
   const btnStyle = {
     fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
     background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
@@ -228,6 +340,7 @@ function Header({ currentDay, onReset, colorblind, onToggleColorblind }) {
         </p>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={onShowChangelog} style={btnStyle}>Changelog</button>
         <button onClick={onToggleColorblind} style={{
           ...btnStyle,
           background: colorblind ? '#eef2ff' : '#fff',
@@ -244,13 +357,13 @@ function Header({ currentDay, onReset, colorblind, onToggleColorblind }) {
 
 // ─── Stats Bar ───
 
-function StatsBar({ publishedCount, buffer, assignedCount, totalWords, daysLeft }) {
+function StatsBar({ publishedCount, buffer, readyCount, assignedCount, totalWords }) {
   const pills = [
     { label: `✓ ${publishedCount}/30`, color: '#059669', bg: '#ecfdf5' },
     { label: buffer >= 0 ? `+${buffer} ahead` : `${buffer} behind`, color: buffer >= 0 ? '#059669' : '#dc2626', bg: buffer >= 0 ? '#ecfdf5' : '#fef2f2' },
+    { label: `${readyCount} ready`, color: '#4f46e5', bg: '#dbe0fe' },
     { label: `${assignedCount} assigned`, color: '#6366f1', bg: '#eef2ff' },
     ...(totalWords > 0 ? [{ label: `${totalWords.toLocaleString()} words`, color: '#6b7280', bg: '#f3f4f6' }] : []),
-    { label: `${daysLeft}d left`, color: '#6b7280', bg: '#f3f4f6' },
   ];
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
@@ -313,7 +426,7 @@ function Tabs({ tab, setTab, postCount }) {
 
 // ─── Calendar ───
 
-function Calendar({ dayMap, currentDay, onDayClick }) {
+function Calendar({ dayMap, currentDay, onDayClick, onContextMenu }) {
   const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const cells = [];
   for (let i = 0; i < APRIL_1_DOW; i++) cells.push(null);
@@ -331,14 +444,14 @@ function Calendar({ dayMap, currentDay, onDayClick }) {
         {cells.map((day, i) => day === null ? (
           <div key={`blank-${i}`} style={{ minHeight: 86 }} />
         ) : (
-          <DayCell key={day} day={day} entry={dayMap[day] || null} isToday={day === currentDay} isPast={day < currentDay} onClick={() => onDayClick(day)} />
+          <DayCell key={day} day={day} entry={dayMap[day] || null} isToday={day === currentDay} isPast={day < currentDay} onClick={() => onDayClick(day)} onContextMenu={onContextMenu} />
         ))}
       </div>
     </div>
   );
 }
 
-function DayCell({ day, entry, isToday, isPast, onClick }) {
+function DayCell({ day, entry, isToday, isPast, onClick, onContextMenu }) {
   const EFFORTS = useContext(EffortsContext);
   const [hovered, setHovered] = useState(false);
   const hasPost = !!entry;
@@ -357,6 +470,12 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
           window.open(entry.link, '_blank');
         } else {
           onClick();
+        }
+      }}
+      onContextMenu={e => {
+        if (hasPost) {
+          e.preventDefault();
+          onContextMenu({ x: e.clientX, y: e.clientY, day, postId: entry.id });
         }
       }}
       onMouseEnter={() => setHovered(true)}
@@ -425,6 +544,20 @@ function DayCell({ day, entry, isToday, isPast, onClick }) {
 // ─── Edit Modal ───
 
 function EditModal({ day, entry, unassigned, onClose, update }) {
+  const saveRef = useRef(null);
+
+  useEffect(() => {
+    const handleKey = e => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Enter' && !e.shiftKey && saveRef.current) {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex',
@@ -438,7 +571,7 @@ function EditModal({ day, entry, unassigned, onClose, update }) {
           Day {day}
         </h2>
         {entry ? (
-          <AssignedDayForm day={day} entry={entry} update={update} onClose={onClose} />
+          <AssignedDayForm day={day} entry={entry} update={update} onClose={onClose} saveRef={saveRef} />
         ) : (
           <EmptyDayForm day={day} unassigned={unassigned} update={update} onClose={onClose} />
         )}
@@ -528,7 +661,7 @@ function EmptyDayForm({ day, unassigned, update, onClose }) {
   );
 }
 
-function AssignedDayForm({ day, entry, update, onClose }) {
+function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
   const EFFORTS = useContext(EffortsContext);
   const [title, setTitle] = useState(entry.title);
   const [status, setStatus] = useState(entry.status);
@@ -537,6 +670,7 @@ function AssignedDayForm({ day, entry, update, onClose }) {
   const [link, setLink] = useState(entry.link || '');
 
   const saveAndClose = () => {
+    const becamePublished = status === 'published' && entry.status !== 'published';
     update(d => {
       const post = d.posts.find(p => p.id === entry.id);
       if (post) {
@@ -548,8 +682,13 @@ function AssignedDayForm({ day, entry, update, onClose }) {
       }
       return d;
     });
+    if (becamePublished) fireConfetti();
     onClose();
   };
+
+  useEffect(() => {
+    if (saveRef) saveRef.current = saveAndClose;
+  });
 
   const unassignFromDay = () => {
     update(d => {
@@ -642,29 +781,51 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
     setDropTarget(null);
   };
 
-  const onDropOnColumn = (status) => {
+  const onDropOnColumn = (targetStatus) => {
     if (!dragId) return;
+    const post = posts.find(p => p.id === dragId);
+    if (!post) return;
+    if (targetStatus === 'published' && post.day === null && post.status !== 'published') {
+      if (!confirm("This post isn't assigned to a day yet. Publish anyway?")) {
+        setDragId(null);
+        setDropTarget(null);
+        return;
+      }
+    }
+    const becamePublished = targetStatus === 'published' && post.status !== 'published';
     update(d => {
-      const post = d.posts.find(p => p.id === dragId);
-      if (post) post.status = status;
+      const p = d.posts.find(p => p.id === dragId);
+      if (p) p.status = targetStatus;
       return d;
     });
+    if (becamePublished) fireConfetti();
     setDragId(null);
     setDropTarget(null);
   };
 
-  const onDropOnCard = (targetId, status) => {
+  const onDropOnCard = (targetId, targetStatus) => {
     if (!dragId || dragId === targetId) return;
+    const post = posts.find(p => p.id === dragId);
+    if (!post) return;
+    if (targetStatus === 'published' && post.day === null && post.status !== 'published') {
+      if (!confirm("This post isn't assigned to a day yet. Publish anyway?")) {
+        setDragId(null);
+        setDropTarget(null);
+        return;
+      }
+    }
+    const becamePublished = targetStatus === 'published' && post.status !== 'published';
     update(d => {
       const dragPost = d.posts.find(p => p.id === dragId);
       if (!dragPost) return d;
-      dragPost.status = status;
+      dragPost.status = targetStatus;
       const filtered = d.posts.filter(p => p.id !== dragId);
       const targetIdx = filtered.findIndex(p => p.id === targetId);
       filtered.splice(targetIdx, 0, dragPost);
       d.posts = filtered;
       return d;
     });
+    if (becamePublished) fireConfetti();
     setDragId(null);
     setDropTarget(null);
   };
@@ -717,7 +878,7 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
               style={{
                 background: dropTarget === col.status ? col.bg : `${col.bg}99`,
                 borderRadius: 10, padding: 10, minHeight: 120, minWidth: 140,
-                border: dropTarget === col.status ? `2px dashed ${col.color}` : '2px solid transparent',
+                border: dropTarget === col.status ? `2px dashed ${col.color}` : col.status === 'published' ? '2px solid #15803d' : '2px solid transparent',
                 transition: 'background 0.15s, border 0.15s',
               }}
             >
@@ -855,6 +1016,93 @@ function ImportModal({ onClose, update }) {
             }}>Import {lineCount > 0 ? lineCount : ''}</button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Context Menu ───
+
+function ContextMenu({ x, y, post, onEdit, onMarkPublished, onUnassign, onClose }) {
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+
+  useLayoutEffect(() => {
+    if (menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      setPos({
+        left: x + rect.width > window.innerWidth ? x - rect.width : x,
+        top: y + rect.height > window.innerHeight ? y - rect.height : y,
+      });
+    }
+  }, [x, y]);
+
+  const items = [
+    { label: 'Edit', onClick: onEdit },
+    ...(post.status !== 'published' ? [{ label: 'Mark as Published', onClick: onMarkPublished }] : []),
+    { label: 'Unassign from Day', onClick: onUnassign },
+  ];
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1001 }} />
+      <div ref={menuRef} style={{
+        position: 'fixed', left: pos.left, top: pos.top, zIndex: 1002,
+        background: '#fff', borderRadius: 10, padding: '4px 0',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb',
+        minWidth: 180,
+      }}>
+        {items.map((item, i) => (
+          <div
+            key={item.label}
+            onClick={item.onClick}
+            onMouseEnter={() => setHoveredIdx(i)}
+            onMouseLeave={() => setHoveredIdx(null)}
+            style={{
+              padding: '8px 14px', fontSize: 13, color: '#374151', cursor: 'pointer',
+              fontWeight: 500, background: hoveredIdx === i ? '#f3f4f6' : 'transparent',
+            }}
+          >{item.label}</div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ─── Changelog Modal ───
+
+function ChangelogModal({ onClose }) {
+  useEffect(() => {
+    const handleKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 460,
+        maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+      }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16, color: '#1f2937' }}>Changelog</h2>
+        {CHANGELOG.map(entry => (
+          <div key={entry.date} style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#6366f1', marginBottom: 6 }}>{entry.date}</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {entry.changes.map((c, i) => (
+                <li key={i} style={{ fontSize: 13, color: '#374151', lineHeight: '1.6' }}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        <button onClick={onClose} style={{
+          marginTop: 8, padding: '10px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, width: '100%',
+        }}>Close</button>
       </div>
     </div>
   );
