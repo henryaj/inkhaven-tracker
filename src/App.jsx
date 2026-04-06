@@ -23,6 +23,7 @@ const CHANGELOG = [
       'Added confirmation when dragging unassigned posts to published column',
       'Added changelog button',
       'Enter key submits edit modal, Escape dismisses it',
+      'Month navigation — click arrows to change month',
     ],
   },
   {
@@ -52,8 +53,17 @@ const CHANGELOG = [
     ],
   },
 ];
-const DAYS_IN_APRIL = 30;
-const APRIL_1_DOW = 2; // Wednesday, 0-indexed from Monday
+const DEFAULT_YEAR = 2026;
+const DEFAULT_MONTH = 3; // April (0-indexed)
+
+function getMonthInfo(year, month) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // 0=Monday .. 6=Sunday (ISO week)
+  const jsDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const firstDow = jsDay === 0 ? 6 : jsDay - 1;
+  const name = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
+  return { daysInMonth, firstDow, name, year, month };
+}
 
 const EFFORTS_BASE = {
   unset: { label: 'Unset', color: '#9ca3af', border: '#d1d5db', bg: '#f9fafb' },
@@ -89,10 +99,10 @@ const STATUSES = {
 
 const STATUS_ORDER = ['idea', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
 
-function getCurrentDay() {
+function getCurrentDay(year, month) {
   const now = new Date();
-  if (now.getFullYear() === 2026 && now.getMonth() === 3) return now.getDate();
-  return 2;
+  if (now.getFullYear() === year && now.getMonth() === month) return now.getDate();
+  return null; // not the current month
 }
 
 function migrateOldData(old) {
@@ -185,9 +195,21 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [viewYear, setViewYear] = useState(DEFAULT_YEAR);
+  const [viewMonth, setViewMonth] = useState(DEFAULT_MONTH);
   const [colorblind, setColorblind] = useState(() => localStorage.getItem('inkhaven-colorblind') === 'true');
-  const currentDay = getCurrentDay();
+  const monthInfo = getMonthInfo(viewYear, viewMonth);
+  const currentDay = getCurrentDay(viewYear, viewMonth);
   const EFFORTS = getEfforts(colorblind);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  };
 
   const toggleColorblind = () => {
     setColorblind(prev => {
@@ -225,19 +247,20 @@ export default function App() {
   const readyCount = posts.filter(p => p.status === 'readyToPublish').length;
   const assignedCount = posts.filter(p => p.day != null && p.status !== 'published').length;
   const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
-  const buffer = readyOrPublishedScheduled - currentDay;
-  const daysLeft = DAYS_IN_APRIL - currentDay;
+  const effectiveDay = currentDay || 0;
+  const buffer = readyOrPublishedScheduled - effectiveDay;
+  const daysLeft = monthInfo.daysInMonth - effectiveDay;
 
   return (
     <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: tab === 'kanban' ? 1400 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
-      <Header currentDay={currentDay} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
-      <StatsBar publishedCount={publishedCount} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
+      <Header currentDay={currentDay} monthInfo={monthInfo} onPrevMonth={prevMonth} onNextMonth={nextMonth} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
+      <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
       <Legend />
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} />
 
       {tab === 'calendar' ? (
-        <Calendar dayMap={dayMap} currentDay={currentDay} onDayClick={setModalDay} onContextMenu={setContextMenu} />
+        <Calendar dayMap={dayMap} currentDay={currentDay} monthInfo={monthInfo} onDayClick={setModalDay} onContextMenu={setContextMenu} />
       ) : (
         <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} />
       )}
@@ -321,10 +344,14 @@ export default function App() {
 
 // ─── Header ───
 
-function Header({ currentDay, onReset, colorblind, onToggleColorblind, onShowChangelog }) {
+function Header({ currentDay, monthInfo, onPrevMonth, onNextMonth, onReset, colorblind, onToggleColorblind, onShowChangelog }) {
   const btnStyle = {
     fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
     background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
+  };
+  const arrowStyle = {
+    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#6b7280',
+    padding: '0 4px', fontWeight: 700, lineHeight: 1,
   };
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -332,8 +359,11 @@ function Header({ currentDay, onReset, colorblind, onToggleColorblind, onShowCha
         <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', color: '#1f2937', margin: 0 }}>
           ✍️ Inkhaven Tracker
         </h1>
-        <p style={{ fontSize: 15, color: '#6b7280', marginTop: 4 }}>
-          April 2026 · Day {currentDay} of 30 · 500+ words daily
+        <p style={{ fontSize: 15, color: '#6b7280', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={onPrevMonth} style={arrowStyle} title="Previous month">‹</button>
+          <span style={{ fontWeight: 600 }}>{monthInfo.name} {monthInfo.year}</span>
+          <button onClick={onNextMonth} style={arrowStyle} title="Next month">›</button>
+          {currentDay != null && <span> · Day {currentDay} of {monthInfo.daysInMonth} · 500+ words daily</span>}
         </p>
         <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
           Data is saved in your browser's local storage and won't sync across devices.
@@ -357,9 +387,9 @@ function Header({ currentDay, onReset, colorblind, onToggleColorblind, onShowCha
 
 // ─── Stats Bar ───
 
-function StatsBar({ publishedCount, buffer, readyCount, assignedCount, totalWords }) {
+function StatsBar({ publishedCount, daysInMonth, buffer, readyCount, assignedCount, totalWords }) {
   const pills = [
-    { label: `✓ ${publishedCount}/30`, color: '#059669', bg: '#ecfdf5' },
+    { label: `✓ ${publishedCount}/${daysInMonth}`, color: '#059669', bg: '#ecfdf5' },
     { label: buffer >= 0 ? `+${buffer} ahead` : `${buffer} behind`, color: buffer >= 0 ? '#059669' : '#dc2626', bg: buffer >= 0 ? '#ecfdf5' : '#fef2f2' },
     { label: `${readyCount} ready`, color: '#4f46e5', bg: '#dbe0fe' },
     { label: `${assignedCount} assigned`, color: '#6366f1', bg: '#eef2ff' },
@@ -426,12 +456,12 @@ function Tabs({ tab, setTab, postCount }) {
 
 // ─── Calendar ───
 
-function Calendar({ dayMap, currentDay, onDayClick, onContextMenu }) {
+function Calendar({ dayMap, currentDay, monthInfo, onDayClick, onContextMenu }) {
   const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const cells = [];
-  for (let i = 0; i < APRIL_1_DOW; i++) cells.push(null);
-  for (let d = 1; d <= DAYS_IN_APRIL; d++) cells.push(d);
-  while (cells.length < 35) cells.push(null);
+  for (let i = 0; i < monthInfo.firstDow; i++) cells.push(null);
+  for (let d = 1; d <= monthInfo.daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
 
   return (
     <div>
