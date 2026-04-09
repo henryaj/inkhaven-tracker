@@ -24,6 +24,7 @@ const CHANGELOG = [
       'Added changelog button',
       'Enter key submits edit modal, Escape dismisses it',
       'Month navigation — click arrows to change month',
+      'Added "Prioritised" status between Idea and In Progress — Ideas column is now gray',
     ],
   },
   {
@@ -90,14 +91,15 @@ function getEfforts(colorblind) {
 }
 
 const STATUSES = {
-  idea: { label: 'Idea', icon: '○', color: '#a5b4fc', bg: '#eef2ff' },
+  idea: { label: 'Idea', icon: '○', color: '#6b7280', bg: '#f3f4f6' },
+  prioritised: { label: 'Prioritised', icon: '★', color: '#7c3aed', bg: '#ede9fe' },
   inProgress: { label: 'In Progress', icon: '✎', color: '#818cf8', bg: '#e8ecff' },
   hitWordCount: { label: 'Hit Word Count', icon: '✓', color: '#6366f1', bg: '#e0e4ff' },
   readyToPublish: { label: 'Ready to Publish', icon: '◈', color: '#4f46e5', bg: '#dbe0fe' },
   published: { label: 'Published', icon: '✓', color: '#16a34a', bg: '#dcfce7' },
 };
 
-const STATUS_ORDER = ['idea', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
+const STATUS_ORDER = ['idea', 'prioritised', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
 
 function getCurrentDay(year, month) {
   const now = new Date();
@@ -195,20 +197,26 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
-  const [viewYear, setViewYear] = useState(DEFAULT_YEAR);
-  const [viewMonth, setViewMonth] = useState(DEFAULT_MONTH);
+  const [viewYear, setViewYear] = useState(() => {
+    const saved = localStorage.getItem('inkhaven-view-year');
+    return saved ? Number(saved) : DEFAULT_YEAR;
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    const saved = localStorage.getItem('inkhaven-view-month');
+    return saved != null ? Number(saved) : DEFAULT_MONTH;
+  });
   const [colorblind, setColorblind] = useState(() => localStorage.getItem('inkhaven-colorblind') === 'true');
   const monthInfo = getMonthInfo(viewYear, viewMonth);
   const currentDay = getCurrentDay(viewYear, viewMonth);
   const EFFORTS = getEfforts(colorblind);
 
-  const prevMonth = () => {
-    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
-    else setViewMonth(m => m - 1);
+  const changeMonth = (m) => {
+    setViewMonth(m);
+    localStorage.setItem('inkhaven-view-month', String(m));
   };
-  const nextMonth = () => {
-    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
-    else setViewMonth(m => m + 1);
+  const changeYear = (y) => {
+    setViewYear(y);
+    localStorage.setItem('inkhaven-view-year', String(y));
   };
 
   const toggleColorblind = () => {
@@ -254,7 +262,7 @@ export default function App() {
   return (
     <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: tab === 'kanban' ? 1400 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
-      <Header currentDay={currentDay} monthInfo={monthInfo} onPrevMonth={prevMonth} onNextMonth={nextMonth} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
+      <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
       <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
       <Legend />
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} />
@@ -344,14 +352,16 @@ export default function App() {
 
 // ─── Header ───
 
-function Header({ currentDay, monthInfo, onPrevMonth, onNextMonth, onReset, colorblind, onToggleColorblind, onShowChangelog }) {
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onChangeYear, onReset, colorblind, onToggleColorblind, onShowChangelog }) {
   const btnStyle = {
     fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
     background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
   };
-  const arrowStyle = {
-    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#6b7280',
-    padding: '0 4px', fontWeight: 700, lineHeight: 1,
+  const pickerStyle = {
+    fontSize: 15, fontWeight: 600, color: '#374151', background: 'none',
+    border: 'none', cursor: 'pointer', padding: 0,
   };
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -360,9 +370,12 @@ function Header({ currentDay, monthInfo, onPrevMonth, onNextMonth, onReset, colo
           ✍️ Inkhaven Tracker
         </h1>
         <p style={{ fontSize: 15, color: '#6b7280', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button onClick={onPrevMonth} style={arrowStyle} title="Previous month">‹</button>
-          <span style={{ fontWeight: 600 }}>{monthInfo.name} {monthInfo.year}</span>
-          <button onClick={onNextMonth} style={arrowStyle} title="Next month">›</button>
+          <select value={viewMonth} onChange={e => onChangeMonth(Number(e.target.value))} style={pickerStyle}>
+            {MONTH_NAMES.map((name, i) => <option key={i} value={i}>{name}</option>)}
+          </select>
+          <select value={viewYear} onChange={e => onChangeYear(Number(e.target.value))} style={pickerStyle}>
+            {Array.from({ length: 11 }, (_, i) => 2020 + i).map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
           {currentDay != null && <span> · Day {currentDay} of {monthInfo.daysInMonth} · 500+ words daily</span>}
         </p>
         <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
