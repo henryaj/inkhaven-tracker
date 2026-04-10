@@ -16,6 +16,14 @@ function fireConfetti() {
 
 const CHANGELOG = [
   {
+    date: '2026-04-10',
+    changes: [
+      'Added Focus tab — pin up to 3 posts as your writing queue',
+      'Pin/unpin posts from the board with the 📌 button',
+      'Focus cards show word count progress bar, quick status advance, and edit/link buttons',
+    ],
+  },
+  {
     date: '2026-04-06',
     changes: [
       'Added right-click context menu on calendar days (edit, mark published, unassign)',
@@ -248,6 +256,12 @@ export default function App() {
   };
 
   const posts = data.posts;
+  const pinnedPosts = posts.filter(p => p.pinned).sort((a, b) => {
+    if (a.day != null && b.day != null) return a.day - b.day;
+    if (a.day != null) return -1;
+    if (b.day != null) return 1;
+    return 0;
+  });
   const dayMap = getDayMap(posts);
   const unassigned = getUnassignedPosts(posts);
   const publishedCount = posts.filter(p => p.status === 'published').length;
@@ -261,16 +275,20 @@ export default function App() {
 
   return (
     <EffortsContext.Provider value={EFFORTS}>
-    <div style={{ maxWidth: tab === 'kanban' ? 1400 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
+    <div style={{ maxWidth: tab === 'kanban' ? 1400 : tab === 'focus' ? 640 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
       <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
       <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
       <Legend />
-      <Tabs tab={tab} setTab={setTab} postCount={posts.length} />
+      <Tabs tab={tab} setTab={setTab} postCount={posts.length} pinnedCount={pinnedPosts.length} />
 
-      {tab === 'calendar' ? (
+      {tab === 'calendar' && (
         <Calendar dayMap={dayMap} currentDay={currentDay} monthInfo={monthInfo} onDayClick={setModalDay} onContextMenu={setContextMenu} />
-      ) : (
+      )}
+      {tab === 'kanban' && (
         <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} />
+      )}
+      {tab === 'focus' && (
+        <Focus pinnedPosts={pinnedPosts} update={update} onEditPost={setModalPostId} onGoToBoard={() => setTab('kanban')} />
       )}
 
       {modalDay !== null && (
@@ -453,7 +471,7 @@ function Legend() {
 
 // ─── Tabs ───
 
-function Tabs({ tab, setTab, postCount }) {
+function Tabs({ tab, setTab, postCount, pinnedCount }) {
   const tabStyle = (active) => ({
     fontSize: 15, fontWeight: 600, padding: '8px 0', marginRight: 24, cursor: 'pointer',
     background: 'none', border: 'none', borderBottom: active ? '2.5px solid #6366f1' : '2.5px solid transparent',
@@ -463,6 +481,7 @@ function Tabs({ tab, setTab, postCount }) {
     <div style={{ borderBottom: '1px solid #e5e7eb', marginBottom: 16, display: 'flex' }}>
       <button style={tabStyle(tab === 'calendar')} onClick={() => setTab('calendar')}>Calendar</button>
       <button style={tabStyle(tab === 'kanban')} onClick={() => setTab('kanban')}>Board ({postCount})</button>
+      <button style={tabStyle(tab === 'focus')} onClick={() => setTab('focus')}>Focus{pinnedCount > 0 ? ` (${pinnedCount})` : ''}</button>
     </div>
   );
 }
@@ -971,10 +990,31 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
                       )}
                     </div>
                     <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const pinnedCount = posts.filter(p => p.pinned).length;
+                        if (!item.pinned && pinnedCount >= 3) { alert('Unpin a post first (max 3).'); return; }
+                        update(d => {
+                          const p = d.posts.find(p => p.id === item.id);
+                          if (p) p.pinned = !p.pinned;
+                          return d;
+                        });
+                      }}
+                      title={item.pinned ? 'Unpin from Focus' : 'Pin to Focus'}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 12, padding: '0 0 0 6px', lineHeight: 1, flexShrink: 0,
+                        color: item.pinned ? '#6366f1' : '#d1d5db',
+                        opacity: item.pinned ? 1 : 0.6,
+                      }}
+                      onMouseEnter={e => { if (!item.pinned) e.currentTarget.style.opacity = '1'; }}
+                      onMouseLeave={e => { if (!item.pinned) e.currentTarget.style.opacity = '0.6'; }}
+                    >📌</button>
+                    <button
                       onClick={(e) => { e.stopPropagation(); removePost(item.id); }}
                       style={{
                         background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer',
-                        fontSize: 14, padding: '0 0 0 8px', lineHeight: 1, flexShrink: 0,
+                        fontSize: 14, padding: '0 0 0 6px', lineHeight: 1, flexShrink: 0,
                       }}
                       onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                       onMouseLeave={e => e.currentTarget.style.color = '#d1d5db'}
@@ -986,6 +1026,135 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Focus Tab ───
+
+function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
+  const EFFORTS = useContext(EffortsContext);
+
+  const advanceStatus = (postId, currentStatus) => {
+    const idx = STATUS_ORDER.indexOf(currentStatus);
+    if (idx < 0 || idx >= STATUS_ORDER.length - 1) return;
+    const nextStatus = STATUS_ORDER[idx + 1];
+    update(d => {
+      const p = d.posts.find(p => p.id === postId);
+      if (p) p.status = nextStatus;
+      return d;
+    });
+    if (nextStatus === 'published') fireConfetti();
+  };
+
+  const unpin = (postId) => {
+    update(d => {
+      const p = d.posts.find(p => p.id === postId);
+      if (p) p.pinned = false;
+      return d;
+    });
+  };
+
+  if (pinnedPosts.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <p style={{ fontSize: 16, color: '#6b7280', marginBottom: 16 }}>
+          Pin up to 3 posts to focus on.
+        </p>
+        <p style={{ fontSize: 14, color: '#9ca3af', marginBottom: 20 }}>
+          Use the 📌 button on the board to pin them.
+        </p>
+        <button onClick={onGoToBoard} style={{
+          padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14,
+        }}>Go to Board</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {pinnedPosts.map(post => {
+        const effortInfo = EFFORTS[post.effort] || EFFORTS.quick;
+        const statusInfo = STATUSES[post.status] || STATUSES.idea;
+        const progress = Math.min((post.wordCount || 0) / 500, 1);
+        const nextStatusIdx = STATUS_ORDER.indexOf(post.status);
+        const canAdvance = nextStatusIdx >= 0 && nextStatusIdx < STATUS_ORDER.length - 1;
+        const nextStatusLabel = canAdvance ? STATUSES[STATUS_ORDER[nextStatusIdx + 1]]?.label : null;
+
+        return (
+          <div key={post.id} style={{
+            background: '#fff', borderRadius: 12, padding: '20px 24px',
+            border: '1px solid #f0f0f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <EffortBar effort={post.effort} width={6} style={{ borderRadius: 12 }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', margin: 0, flex: 1 }}>
+                {post.title}
+              </h3>
+              <button onClick={() => unpin(post.id)} title="Unpin" style={{
+                background: 'none', border: 'none', cursor: 'pointer', fontSize: 14,
+                color: '#6366f1', padding: '0 0 0 12px', flexShrink: 0,
+              }}>📌</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              {post.day != null && (
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#6366f1', background: '#eef2ff', padding: '2px 10px', borderRadius: 6 }}>
+                  Day {post.day}
+                </span>
+              )}
+              <span style={{ fontSize: 13, fontWeight: 600, color: effortInfo.color, background: effortInfo.bg, padding: '2px 10px', borderRadius: 6 }}>
+                {effortInfo.label}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: statusInfo.color, background: statusInfo.bg, padding: '2px 10px', borderRadius: 6 }}>
+                {statusInfo.icon} {statusInfo.label}
+              </span>
+            </div>
+
+            {/* Word count progress */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: '#6b7280' }}>Words</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: progress >= 1 ? '#059669' : '#374151' }}>
+                  {(post.wordCount || 0).toLocaleString()} / 500
+                </span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: '#f3f4f6', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 3, transition: 'width 0.3s ease',
+                  width: `${progress * 100}%`,
+                  background: progress >= 1 ? '#34d399' : '#6366f1',
+                }} />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {canAdvance && (
+                <button onClick={() => advanceStatus(post.id, post.status)} style={{
+                  padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 13,
+                }}>
+                  → {nextStatusLabel}
+                </button>
+              )}
+              <button onClick={() => onEditPost(post.id)} style={{
+                padding: '7px 14px', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer',
+                background: '#fff', color: '#374151', fontWeight: 500, fontSize: 13,
+              }}>Edit</button>
+              {post.link && (
+                <button onClick={() => window.open(post.link, '_blank')} style={{
+                  padding: '7px 14px', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer',
+                  background: '#fff', color: '#374151', fontWeight: 500, fontSize: 13,
+                }}>Open link ↗</button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
