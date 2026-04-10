@@ -5,6 +5,15 @@ const EffortsContext = createContext(null);
 
 const STORAGE_KEY = 'inkhaven-tracker-v3';
 
+function PinIcon({ size = 14, filled = false, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ display: 'block' }}>
+      <path d="M4.5 2.5L7 1l4.5 1.5L10 6l1 2.5H5L6 6 4.5 2.5z" stroke={color} strokeWidth={1.2} fill={filled ? color : 'none'} strokeLinejoin="round" />
+      <line x1="8" y1="8.5" x2="8" y2="15" stroke={color} strokeWidth={1.2} />
+    </svg>
+  );
+}
+
 function fireConfetti() {
   confetti({
     particleCount: 80,
@@ -730,6 +739,7 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
   const [effort, setEffort] = useState(entry.effort);
   const [wordCount, setWordCount] = useState(entry.wordCount);
   const [link, setLink] = useState(entry.link || '');
+  const [notes, setNotes] = useState(entry.notes || '');
 
   const saveAndClose = () => {
     const becamePublished = status === 'published' && entry.status !== 'published';
@@ -741,6 +751,7 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
         post.effort = effort;
         post.wordCount = Number(wordCount) || 0;
         post.link = link;
+        post.notes = notes;
       }
       return d;
     });
@@ -785,6 +796,15 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
 
       <label style={labelStyle}>Published link</label>
       <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://inkhaven.blog/…" style={inputStyle} />
+
+      <label style={labelStyle}>Notes</label>
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        placeholder="Running notes…"
+        rows={3}
+        style={{ ...inputStyle, resize: 'vertical', minHeight: 60, lineHeight: '1.5' }}
+      />
 
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
         <button onClick={unassignFromDay} style={{
@@ -1009,7 +1029,7 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
                       }}
                       onMouseEnter={e => { if (!item.pinned) e.currentTarget.style.opacity = '1'; }}
                       onMouseLeave={e => { if (!item.pinned) e.currentTarget.style.opacity = '0.6'; }}
-                    >📌</button>
+                    ><PinIcon size={13} filled={item.pinned} color={item.pinned ? '#6366f1' : '#d1d5db'} /></button>
                     <button
                       onClick={(e) => { e.stopPropagation(); removePost(item.id); }}
                       style={{
@@ -1062,7 +1082,7 @@ function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
           Pin up to 3 posts to focus on.
         </p>
         <p style={{ fontSize: 14, color: '#9ca3af', marginBottom: 20 }}>
-          Use the 📌 button on the board to pin them.
+          Use the pin button on the board to pin them.
         </p>
         <button onClick={onGoToBoard} style={{
           padding: '10px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -1097,7 +1117,7 @@ function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
               <button onClick={() => unpin(post.id)} title="Unpin" style={{
                 background: 'none', border: 'none', cursor: 'pointer', fontSize: 14,
                 color: '#6366f1', padding: '0 0 0 12px', flexShrink: 0,
-              }}>📌</button>
+              }}><PinIcon size={14} filled color="#6366f1" /></button>
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -1129,6 +1149,28 @@ function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
                   background: progress >= 1 ? '#34d399' : '#6366f1',
                 }} />
               </div>
+            </div>
+
+            {/* Notes */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 }}>Notes</label>
+              <textarea
+                value={post.notes || ''}
+                onChange={e => {
+                  const val = e.target.value;
+                  update(d => {
+                    const p = d.posts.find(p => p.id === post.id);
+                    if (p) p.notes = val;
+                    return d;
+                  });
+                }}
+                placeholder="Running notes…"
+                rows={3}
+                style={{
+                  ...inputStyle, marginBottom: 0, resize: 'vertical',
+                  minHeight: 60, lineHeight: '1.5', fontSize: 14,
+                }}
+              />
             </div>
 
             {/* Actions */}
