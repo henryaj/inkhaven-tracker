@@ -30,6 +30,7 @@ const CHANGELOG = [
       'Added Focus tab — pin up to 3 posts as your writing queue',
       'Pin/unpin posts from the board with the 📌 button',
       'Focus cards show word count progress bar, quick status advance, and edit/link buttons',
+      'Right-click any day to mark it as a holiday (yellow highlight + beach icon)',
     ],
   },
   {
@@ -182,11 +183,11 @@ function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.posts) return parsed;
+      if (parsed.posts) return { holidays: [], ...parsed };
       if (parsed.days || parsed.backlog) return migrateOldData(parsed);
     }
   } catch (e) { /* ignore */ }
-  return { posts: [] };
+  return { posts: [], holidays: [] };
 }
 
 // Helpers to derive views from the unified posts list
@@ -259,7 +260,7 @@ export default function App() {
 
   const reset = () => {
     if (confirm('Reset all data? This cannot be undone.')) {
-      save({ posts: [] });
+      save({ posts: [], holidays: [] });
       setModalDay(null);
     }
   };
@@ -291,7 +292,7 @@ export default function App() {
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} pinnedCount={pinnedPosts.length} />
 
       {tab === 'calendar' && (
-        <Calendar dayMap={dayMap} currentDay={currentDay} monthInfo={monthInfo} onDayClick={setModalDay} onContextMenu={setContextMenu} />
+        <Calendar dayMap={dayMap} currentDay={currentDay} monthInfo={monthInfo} holidays={data.holidays || []} onDayClick={setModalDay} onContextMenu={setContextMenu} />
       )}
       {tab === 'kanban' && (
         <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} />
@@ -332,18 +333,19 @@ export default function App() {
       )}
 
       {contextMenu && (() => {
-        const post = posts.find(p => p.id === contextMenu.postId);
-        if (!post) return null;
+        const post = contextMenu.postId ? posts.find(p => p.id === contextMenu.postId) : null;
+        const isHoliday = (data.holidays || []).includes(contextMenu.day);
         return (
           <ContextMenu
             x={contextMenu.x}
             y={contextMenu.y}
             post={post}
-            onEdit={() => {
+            isHoliday={isHoliday}
+            onEdit={post ? () => {
               setModalDay(contextMenu.day);
               setContextMenu(null);
-            }}
-            onMarkPublished={() => {
+            } : null}
+            onMarkPublished={post ? () => {
               update(d => {
                 const p = d.posts.find(p => p.id === contextMenu.postId);
                 if (p) p.status = 'published';
@@ -351,11 +353,21 @@ export default function App() {
               });
               fireConfetti();
               setContextMenu(null);
-            }}
-            onUnassign={() => {
+            } : null}
+            onUnassign={post ? () => {
               update(d => {
                 const p = d.posts.find(p => p.id === contextMenu.postId);
                 if (p) p.day = null;
+                return d;
+              });
+              setContextMenu(null);
+            } : null}
+            onToggleHoliday={() => {
+              update(d => {
+                if (!d.holidays) d.holidays = [];
+                const idx = d.holidays.indexOf(contextMenu.day);
+                if (idx >= 0) d.holidays.splice(idx, 1);
+                else d.holidays.push(contextMenu.day);
                 return d;
               });
               setContextMenu(null);
@@ -497,7 +509,7 @@ function Tabs({ tab, setTab, postCount, pinnedCount }) {
 
 // ─── Calendar ───
 
-function Calendar({ dayMap, currentDay, monthInfo, onDayClick, onContextMenu }) {
+function Calendar({ dayMap, currentDay, monthInfo, holidays, onDayClick, onContextMenu }) {
   const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const cells = [];
   for (let i = 0; i < monthInfo.firstDow; i++) cells.push(null);
@@ -515,14 +527,14 @@ function Calendar({ dayMap, currentDay, monthInfo, onDayClick, onContextMenu }) 
         {cells.map((day, i) => day === null ? (
           <div key={`blank-${i}`} style={{ minHeight: 86 }} />
         ) : (
-          <DayCell key={day} day={day} entry={dayMap[day] || null} isToday={day === currentDay} isPast={day < currentDay} onClick={() => onDayClick(day)} onContextMenu={onContextMenu} />
+          <DayCell key={day} day={day} entry={dayMap[day] || null} isToday={day === currentDay} isPast={day < currentDay} isHoliday={holidays.includes(day)} onClick={() => onDayClick(day)} onContextMenu={onContextMenu} />
         ))}
       </div>
     </div>
   );
 }
 
-function DayCell({ day, entry, isToday, isPast, onClick, onContextMenu }) {
+function DayCell({ day, entry, isToday, isPast, isHoliday, onClick, onContextMenu }) {
   const EFFORTS = useContext(EffortsContext);
   const [hovered, setHovered] = useState(false);
   const hasPost = !!entry;
@@ -533,6 +545,7 @@ function DayCell({ day, entry, isToday, isPast, onClick, onContextMenu }) {
   if (isPublished) bg = '#f0fdf4';
   else if (hasPost) bg = '#fff';
   else if (isPast) bg = '#fef2f2';
+  if (isHoliday && !isPublished) bg = '#fefce8';
 
   return (
     <div
@@ -544,10 +557,8 @@ function DayCell({ day, entry, isToday, isPast, onClick, onContextMenu }) {
         }
       }}
       onContextMenu={e => {
-        if (hasPost) {
-          e.preventDefault();
-          onContextMenu({ x: e.clientX, y: e.clientY, day, postId: entry.id });
-        }
+        e.preventDefault();
+        onContextMenu({ x: e.clientX, y: e.clientY, day, postId: hasPost ? entry.id : null });
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -564,7 +575,7 @@ function DayCell({ day, entry, isToday, isPast, onClick, onContextMenu }) {
     >
       {hasPost && <EffortBar effort={entry.effort} width={5} style={{ borderRadius: 10 }} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-        <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}</span>
+        <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}{isHoliday && <span style={{ marginLeft: 2, fontSize: 11 }} title="Holiday">🏖</span>}</span>
         {hasPost && (() => {
           let icon, color, badgeBg;
           if (entry.status === 'published') {
@@ -1277,7 +1288,7 @@ function ImportModal({ onClose, update }) {
 
 // ─── Context Menu ───
 
-function ContextMenu({ x, y, post, onEdit, onMarkPublished, onUnassign, onClose }) {
+function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassign, onToggleHoliday, onClose }) {
   const menuRef = useRef(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [hoveredIdx, setHoveredIdx] = useState(null);
@@ -1293,9 +1304,10 @@ function ContextMenu({ x, y, post, onEdit, onMarkPublished, onUnassign, onClose 
   }, [x, y]);
 
   const items = [
-    { label: 'Edit', onClick: onEdit },
-    ...(post.status !== 'published' ? [{ label: 'Mark as Published', onClick: onMarkPublished }] : []),
-    { label: 'Unassign from Day', onClick: onUnassign },
+    ...(onEdit ? [{ label: 'Edit', onClick: onEdit }] : []),
+    ...(post && post.status !== 'published' && onMarkPublished ? [{ label: 'Mark as Published', onClick: onMarkPublished }] : []),
+    ...(onUnassign ? [{ label: 'Unassign from Day', onClick: onUnassign }] : []),
+    { label: isHoliday ? 'Unmark Holiday' : 'Mark as Holiday', onClick: onToggleHoliday },
   ];
 
   return (
