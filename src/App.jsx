@@ -25,6 +25,12 @@ function fireConfetti() {
 
 const CHANGELOG = [
   {
+    date: '2026-04-11',
+    changes: [
+      'Added "Ask AI" button — copies full dashboard state and a prompt to clipboard for pasting into an AI assistant',
+    ],
+  },
+  {
     date: '2026-04-10',
     changes: [
       'Added Focus tab — pin up to 3 posts as your writing queue',
@@ -283,10 +289,68 @@ export default function App() {
   const buffer = readyOrPublishedScheduled - effectiveDay;
   const daysLeft = monthInfo.daysInMonth - effectiveDay;
 
+  const copyForAI = ({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts }) => {
+    const statusOrder = ['idea', 'prioritised', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
+    const statusLabel = { idea: 'Idea', prioritised: 'Prioritised', inProgress: 'In Progress', hitWordCount: 'Hit Word Count', readyToPublish: 'Ready to Publish', published: 'Published' };
+    const effortLabel = { unset: 'Unset', quick: 'Quick', medium: 'Medium', flagship: 'Flagship' };
+
+    const grouped = {};
+    for (const s of statusOrder) grouped[s] = [];
+    for (const p of posts) (grouped[p.status] || (grouped[p.status] = [])).push(p);
+
+    let postsList = '';
+    for (const s of statusOrder) {
+      if (grouped[s].length === 0) continue;
+      postsList += `\n### ${statusLabel[s] || s} (${grouped[s].length})\n`;
+      for (const p of grouped[s]) {
+        const parts = [`"${p.title}"`, effortLabel[p.effort] || p.effort];
+        if (p.wordCount) parts.push(`${p.wordCount} words`);
+        if (p.day != null) parts.push(`day ${p.day}`);
+        if (p.pinned) parts.push('PINNED');
+        if (p.notes) parts.push(`notes: ${p.notes}`);
+        postsList += `- ${parts.join(' · ')}\n`;
+      }
+    }
+
+    const holidays = (data.holidays || []);
+    const holidayLine = holidays.length > 0 ? `\nHolidays (no post expected): days ${holidays.join(', ')}\n` : '';
+
+    const pinnedLine = pinnedPosts.length > 0
+      ? `\nFocus queue (pinned): ${pinnedPosts.map(p => `"${p.title}"`).join(', ')}\n`
+      : '';
+
+    const text = `You are an expert writing coach and content strategist. Below is the current state of my daily blog post tracker for ${monthInfo.name} ${monthInfo.year}. I'm trying to publish one blog post every day of the month (${monthInfo.daysInMonth} days, 500+ words each).
+
+## Dashboard Summary
+- Today: Day ${currentDay || '?'} of ${monthInfo.daysInMonth} (${daysLeft} days left)
+- Published: ${publishedCount}/${monthInfo.daysInMonth}
+- Buffer: ${buffer >= 0 ? '+' + buffer + ' ahead' : buffer + ' behind'}
+- Ready to publish: ${readyCount}
+- Scheduled (assigned to a day): ${assignedCount}
+- Total words written: ${totalWords.toLocaleString()}
+- Total posts: ${posts.length}
+${holidayLine}${pinnedLine}
+## All Posts by Status
+${postsList}
+---
+
+Based on this data, please give me actionable suggestions. Consider:
+- Am I on track to hit my goal? What's my biggest risk?
+- Which posts should I prioritise finishing next?
+- Do I have enough ideas in the pipeline for the rest of the month?
+- Any scheduling gaps or issues you notice?
+- Suggestions for new post topics based on what I've written so far?
+`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      alert('Copied dashboard state + AI prompt to clipboard!');
+    });
+  };
+
   return (
     <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: tab === 'kanban' ? 1400 : tab === 'focus' ? 640 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
-      <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} />
+      <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} onCopyForAI={() => copyForAI({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts })} />
       <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
       <Legend />
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} pinnedCount={pinnedPosts.length} />
@@ -393,7 +457,7 @@ export default function App() {
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onChangeYear, onReset, colorblind, onToggleColorblind, onShowChangelog }) {
+function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onChangeYear, onReset, colorblind, onToggleColorblind, onShowChangelog, onCopyForAI }) {
   const btnStyle = {
     fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
     background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
@@ -422,6 +486,7 @@ function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onC
         </p>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={onCopyForAI} style={btnStyle} title="Copy dashboard state and prompt for an AI assistant">Ask AI</button>
         <button onClick={onShowChangelog} style={btnStyle}>Changelog</button>
         <button onClick={onToggleColorblind} style={{
           ...btnStyle,
