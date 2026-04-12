@@ -28,6 +28,9 @@ const CHANGELOG = [
     date: '2026-04-11',
     changes: [
       'Added "Ask AI" button — copies full dashboard state and a prompt to clipboard for pasting into an AI assistant',
+      'Multiple posts per day — right-click a day to "Add another post", +N badge with hover tooltip for extra posts',
+      'Click a multi-post day to see a post picker before editing',
+      'Fixed context menu clipping at right/bottom edges of viewport',
     ],
   },
   {
@@ -197,16 +200,20 @@ function loadData() {
 }
 
 // Helpers to derive views from the unified posts list
-function getPostForDay(posts, day) {
-  return posts.find(p => p.day === day) || null;
+function getPostsForDay(posts, day) {
+  return posts.filter(p => p.day === day);
 }
 function getDayMap(posts) {
   const map = {};
   for (const p of posts) {
-    if (p.day != null) map[p.day] = p;
+    if (p.day != null) {
+      if (!map[p.day]) map[p.day] = [];
+      map[p.day].push(p);
+    }
   }
   return map;
 }
+const EFFORT_RANK = { unset: 0, quick: 1, medium: 2, flagship: 3 };
 function getUnassignedPosts(posts) {
   return posts.filter(p => p.day == null);
 }
@@ -221,6 +228,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [addPostToDay, setAddPostToDay] = useState(null);
   const [viewYear, setViewYear] = useState(() => {
     const saved = localStorage.getItem('inkhaven-view-year');
     return saved ? Number(saved) : DEFAULT_YEAR;
@@ -368,7 +376,7 @@ Based on this data, please give me actionable suggestions. Consider:
       {modalDay !== null && (
         <EditModal
           day={modalDay}
-          entry={dayMap[modalDay] || null}
+          entries={dayMap[modalDay] || []}
           unassigned={unassigned}
           onClose={() => setModalDay(null)}
           update={update}
@@ -381,13 +389,23 @@ Based on this data, please give me actionable suggestions. Consider:
         return (
           <EditModal
             day={post.day}
-            entry={post}
+            entries={[post]}
             unassigned={unassigned}
             onClose={() => setModalPostId(null)}
             update={update}
           />
         );
       })()}
+
+      {addPostToDay !== null && (
+        <EditModal
+          day={addPostToDay}
+          entries={[]}
+          unassigned={unassigned}
+          onClose={() => setAddPostToDay(null)}
+          update={update}
+        />
+      )}
 
       {showImport && (
         <ImportModal
@@ -426,6 +444,10 @@ Based on this data, please give me actionable suggestions. Consider:
               });
               setContextMenu(null);
             } : null}
+            onAddPost={() => {
+              setAddPostToDay(contextMenu.day);
+              setContextMenu(null);
+            }}
             onToggleHoliday={() => {
               update(d => {
                 if (!d.holidays) d.holidays = [];
@@ -592,19 +614,25 @@ function Calendar({ dayMap, currentDay, monthInfo, holidays, onDayClick, onConte
         {cells.map((day, i) => day === null ? (
           <div key={`blank-${i}`} style={{ minHeight: 86 }} />
         ) : (
-          <DayCell key={day} day={day} entry={dayMap[day] || null} isToday={day === currentDay} isPast={day < currentDay} isHoliday={holidays.includes(day)} onClick={() => onDayClick(day)} onContextMenu={onContextMenu} />
+          <DayCell key={day} day={day} entries={dayMap[day] || []} isToday={day === currentDay} isPast={day < currentDay} isHoliday={holidays.includes(day)} onClick={() => onDayClick(day)} onContextMenu={onContextMenu} />
         ))}
       </div>
     </div>
   );
 }
 
-function DayCell({ day, entry, isToday, isPast, isHoliday, onClick, onContextMenu }) {
+function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextMenu }) {
   const EFFORTS = useContext(EffortsContext);
   const [hovered, setHovered] = useState(false);
-  const hasPost = !!entry;
-  const isPublished = hasPost && entry.status === 'published';
-  const isReady = hasPost && (entry.status === 'readyToPublish' || entry.status === 'published');
+  const hasPost = entries.length > 0;
+  const primaryEntry = entries[0] || null;
+  const extraCount = entries.length - 1;
+  const isPublished = hasPost && primaryEntry.status === 'published';
+  const isReady = hasPost && (primaryEntry.status === 'readyToPublish' || primaryEntry.status === 'published');
+  const maxEffort = hasPost ? entries.reduce((best, p) =>
+    (EFFORT_RANK[p.effort] || 0) > (EFFORT_RANK[best] || 0) ? p.effort : best
+  , entries[0].effort) : 'unset';
+  const totalWords = entries.reduce((sum, p) => sum + (p.wordCount || 0), 0);
 
   let bg = '#fafafa';
   if (isPublished) bg = '#f0fdf4';
@@ -615,15 +643,15 @@ function DayCell({ day, entry, isToday, isPast, isHoliday, onClick, onContextMen
   return (
     <div
       onClick={e => {
-        if ((e.metaKey || e.ctrlKey) && hasPost && entry.link) {
-          window.open(entry.link, '_blank');
+        if ((e.metaKey || e.ctrlKey) && hasPost && primaryEntry.link) {
+          window.open(primaryEntry.link, '_blank');
         } else {
           onClick();
         }
       }}
       onContextMenu={e => {
         e.preventDefault();
-        onContextMenu({ x: e.clientX, y: e.clientY, day, postId: hasPost ? entry.id : null });
+        onContextMenu({ x: e.clientX, y: e.clientY, day, postId: hasPost ? primaryEntry.id : null });
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -631,21 +659,21 @@ function DayCell({ day, entry, isToday, isPast, isHoliday, onClick, onContextMen
         minHeight: 86, borderRadius: 10, padding: '6px 8px', cursor: 'pointer',
         background: bg,
         border: isToday ? '2.5px solid #6366f1' : '1px solid #f0f0f0',
-        ...(hasPost ? getEffortBorderStyle(EFFORTS, entry.effort, 5) : {}),
+        ...(hasPost ? getEffortBorderStyle(EFFORTS, maxEffort, 5) : {}),
         transform: hovered ? 'translateY(-1px)' : 'none',
         boxShadow: hovered ? '0 3px 12px rgba(0,0,0,0.08)' : 'none',
         transition: 'transform 0.15s ease, box-shadow 0.15s ease',
         display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden',
       }}
     >
-      {hasPost && <EffortBar effort={entry.effort} width={5} style={{ borderRadius: 10 }} />}
+      {hasPost && <EffortBar effort={maxEffort} width={5} style={{ borderRadius: 10 }} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}{isHoliday && <span style={{ marginLeft: 2, fontSize: 11 }} title="Holiday">🏖</span>}</span>
         {hasPost && (() => {
           let icon, color, badgeBg;
-          if (entry.status === 'published') {
+          if (primaryEntry.status === 'published') {
             icon = '✓'; color = '#059669'; badgeBg = '#ecfdf5';
-          } else if (entry.status === 'readyToPublish') {
+          } else if (primaryEntry.status === 'readyToPublish') {
             icon = '●'; color = '#6b7280'; badgeBg = '#f3f4f6';
           } else {
             icon = '○'; color = '#9ca3af'; badgeBg = '#f3f4f6';
@@ -664,19 +692,28 @@ function DayCell({ day, entry, isToday, isPast, isHoliday, onClick, onContextMen
       {hasPost ? (
         <>
           <span
-            title={STATUSES[entry.status]?.label || 'Idea'}
+            title={STATUSES[primaryEntry.status]?.label || 'Idea'}
             style={{
               fontSize: 12.5, fontWeight: 500, lineHeight: '1.3',
               overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1,
               color: isReady ? '#374151' : '#9ca3af',
               fontStyle: isReady ? 'normal' : 'italic',
-              textDecoration: entry.link ? 'underline' : 'none',
+              textDecoration: primaryEntry.link ? 'underline' : 'none',
               textDecorationColor: '#d1d5db',
               textUnderlineOffset: 2,
             }}
-          >{entry.title}</span>
-          {entry.wordCount > 0 && (
-            <span style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{entry.wordCount.toLocaleString()}w</span>
+          >{primaryEntry.title}</span>
+          {extraCount > 0 && (
+            <span
+              title={entries.slice(1).map(e => e.title).join(', ')}
+              style={{
+                fontSize: 10, fontWeight: 700, color: '#6366f1', background: '#eef2ff',
+                borderRadius: 4, padding: '1px 5px', marginTop: 2, alignSelf: 'flex-start',
+              }}
+            >+{extraCount}</span>
+          )}
+          {totalWords > 0 && (
+            <span style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{totalWords.toLocaleString()}w</span>
           )}
         </>
       ) : (
@@ -690,8 +727,10 @@ function DayCell({ day, entry, isToday, isPast, isHoliday, onClick, onContextMen
 
 // ─── Edit Modal ───
 
-function EditModal({ day, entry, unassigned, onClose, update }) {
+function EditModal({ day, entries = [], unassigned, onClose, update }) {
+  const EFFORTS = useContext(EffortsContext);
   const saveRef = useRef(null);
+  const [selectedPost, setSelectedPost] = useState(entries.length === 1 ? entries[0] : null);
 
   useEffect(() => {
     const handleKey = e => {
@@ -717,10 +756,41 @@ function EditModal({ day, entry, unassigned, onClose, update }) {
         <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16, color: '#1f2937' }}>
           Day {day}
         </h2>
-        {entry ? (
-          <AssignedDayForm day={day} entry={entry} update={update} onClose={onClose} saveRef={saveRef} />
-        ) : (
+        {entries.length === 0 ? (
           <EmptyDayForm day={day} unassigned={unassigned} update={update} onClose={onClose} />
+        ) : entries.length === 1 ? (
+          <AssignedDayForm day={day} entry={entries[0]} update={update} onClose={onClose} saveRef={saveRef} />
+        ) : selectedPost ? (
+          <>
+            <button onClick={() => setSelectedPost(null)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', fontSize: 13,
+              color: '#6366f1', fontWeight: 600, padding: 0, marginBottom: 12,
+            }}>&larr; Back to post list</button>
+            <AssignedDayForm day={day} entry={selectedPost} update={update} onClose={onClose} saveRef={saveRef} />
+          </>
+        ) : (
+          <>
+            <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 12 }}>
+              {entries.length} posts on this day. Pick one to edit:
+            </p>
+            {entries.map(post => (
+              <div key={post.id} onClick={() => setSelectedPost(post)} style={{
+                display: 'flex', alignItems: 'center', padding: '8px 10px', borderRadius: 8,
+                cursor: 'pointer', ...getEffortBorderStyle(EFFORTS, post.effort, 4),
+                marginBottom: 4, transition: 'background 0.1s', position: 'relative', overflow: 'hidden',
+                background: '#fafafa',
+              }}>
+                <EffortBar effort={post.effort} width={4} />
+                <div style={{ flex: 1, marginLeft: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{post.title}</span>
+                  <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
+                    {STATUSES[post.status]?.label || 'Idea'}
+                    {post.wordCount > 0 && ` · ${post.wordCount.toLocaleString()}w`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
     </div>
@@ -1353,9 +1423,10 @@ function ImportModal({ onClose, update }) {
 
 // ─── Context Menu ───
 
-function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassign, onToggleHoliday, onClose }) {
+function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassign, onAddPost, onToggleHoliday, onClose }) {
   const menuRef = useRef(null);
-  const [pos, setPos] = useState({ left: x, top: y });
+  const [pos, setPos] = useState({ left: -9999, top: -9999 });
+  const [visible, setVisible] = useState(false);
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
   useLayoutEffect(() => {
@@ -1365,6 +1436,7 @@ function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassig
         left: x + rect.width > window.innerWidth ? x - rect.width : x,
         top: y + rect.height > window.innerHeight ? y - rect.height : y,
       });
+      setVisible(true);
     }
   }, [x, y]);
 
@@ -1372,6 +1444,7 @@ function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassig
     ...(onEdit ? [{ label: 'Edit', onClick: onEdit }] : []),
     ...(post && post.status !== 'published' && onMarkPublished ? [{ label: 'Mark as Published', onClick: onMarkPublished }] : []),
     ...(onUnassign ? [{ label: 'Unassign from Day', onClick: onUnassign }] : []),
+    ...(post && onAddPost ? [{ label: 'Add another post', onClick: onAddPost }] : []),
     { label: isHoliday ? 'Unmark Holiday' : 'Mark as Holiday', onClick: onToggleHoliday },
   ];
 
@@ -1382,7 +1455,7 @@ function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassig
         position: 'fixed', left: pos.left, top: pos.top, zIndex: 1002,
         background: '#fff', borderRadius: 10, padding: '4px 0',
         boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb',
-        minWidth: 180,
+        minWidth: 180, visibility: visible ? 'visible' : 'hidden',
       }}>
         {items.map((item, i) => (
           <div
