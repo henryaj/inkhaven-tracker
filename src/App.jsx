@@ -31,6 +31,7 @@ const CHANGELOG = [
       'Multiple posts per day — right-click a day to "Add another post", +N badge with hover tooltip for extra posts',
       'Click a multi-post day to see a post picker before editing',
       'Fixed context menu clipping at right/bottom edges of viewport',
+      'Search filter on kanban board — type to filter cards across all columns',
     ],
   },
   {
@@ -976,6 +977,7 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
   const EFFORTS = useContext(EffortsContext);
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
+  const [search, setSearch] = useState('');
 
   const addIdea = () => {
     const t = newTitle.trim();
@@ -1058,37 +1060,60 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
     setDropTarget(null);
   };
 
+  const searchLower = search.toLowerCase().trim();
+  const filtered = searchLower ? posts.filter(p => p.title.toLowerCase().includes(searchLower)) : posts;
   const columns = STATUS_ORDER.map(status => ({
     status,
     ...STATUSES[status],
-    items: posts.filter(p => (p.status || 'idea') === status),
+    items: filtered.filter(p => (p.status || 'idea') === status),
   }));
 
   const isEmpty = posts.length === 0;
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <input
-          value={newTitle}
-          onChange={e => setNewTitle(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addIdea()}
-          placeholder="New post idea…"
-          style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
-        />
-        <select value={newEffort} onChange={e => setNewEffort(e.target.value)} style={{ ...inputStyle, width: 120, marginBottom: 0 }}>
-          {Object.entries(EFFORTS).map(([k, v]) => (
-            <option key={k} value={k}>{v.label}</option>
-          ))}
-        </select>
-        <button onClick={addIdea} style={{
-          padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6366f1',
-          color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
-        }}>Add</button>
-        <button onClick={onImport} style={{
-          padding: '8px 18px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff',
-          color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
-        }}>Import</button>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, alignItems: 'center' }}>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search posts…"
+            style={{ ...inputStyle, marginBottom: 0, width: '100%', paddingRight: 32 }}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              style={{
+                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af',
+                fontSize: 14, padding: '2px 4px', lineHeight: 1,
+              }}
+            >✕</button>
+          )}
+        </div>
+        <div style={{ width: 1, height: 28, background: '#e5e7eb', margin: '0 12px', flexShrink: 0 }} />
+        <div style={{ flex: 2, display: 'flex', gap: 8 }}>
+          <input
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addIdea()}
+            placeholder="New post idea…"
+            style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
+          />
+          <select value={newEffort} onChange={e => setNewEffort(e.target.value)} style={{ ...inputStyle, width: 120, marginBottom: 0 }}>
+            {Object.entries(EFFORTS).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+          <button onClick={addIdea} style={{
+            padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6366f1',
+            color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>Add</button>
+          <button onClick={onImport} style={{
+            padding: '8px 18px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff',
+            color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>Import</button>
+        </div>
       </div>
 
       {isEmpty ? (
