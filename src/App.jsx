@@ -32,6 +32,7 @@ const CHANGELOG = [
       'Click a multi-post day to see a post picker before editing',
       'Fixed context menu clipping at right/bottom edges of viewport',
       'Search filter on kanban board — type to filter cards across all columns',
+      'Fixed buffer calculation — compares against completed days, not today (today is still in progress)',
     ],
   },
   {
@@ -295,7 +296,7 @@ export default function App() {
   const assignedCount = posts.filter(p => p.day != null && p.status !== 'published').length;
   const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
   const effectiveDay = currentDay || 0;
-  const buffer = readyOrPublishedScheduled - effectiveDay;
+  const buffer = readyOrPublishedScheduled - (effectiveDay > 0 ? effectiveDay - 1 : 0);
   const daysLeft = monthInfo.daysInMonth - effectiveDay;
 
   const copyForAI = ({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts }) => {
@@ -333,7 +334,7 @@ export default function App() {
 ## Dashboard Summary
 - Today: Day ${currentDay || '?'} of ${monthInfo.daysInMonth} (${daysLeft} days left)
 - Published: ${publishedCount}/${monthInfo.daysInMonth}
-- Buffer: ${buffer >= 0 ? '+' + buffer + ' ahead' : buffer + ' behind'}
+- Buffer: ${buffer > 0 ? '+' + buffer + ' ahead' : buffer === 0 ? 'On track' : buffer + ' behind'}
 - Ready to publish: ${readyCount}
 - Scheduled (assigned to a day): ${assignedCount}
 - Total words written: ${totalWords.toLocaleString()}
@@ -530,7 +531,7 @@ function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onC
 function StatsBar({ publishedCount, daysInMonth, buffer, readyCount, assignedCount, totalWords }) {
   const pills = [
     { label: `✓ ${publishedCount}/${daysInMonth}`, color: '#059669', bg: '#ecfdf5' },
-    { label: buffer >= 0 ? `+${buffer} ahead` : `${buffer} behind`, color: buffer >= 0 ? '#059669' : '#dc2626', bg: buffer >= 0 ? '#ecfdf5' : '#fef2f2' },
+    { label: buffer > 0 ? `+${buffer} ahead` : buffer === 0 ? 'On track' : `${buffer} behind`, color: buffer >= 0 ? '#059669' : '#dc2626', bg: buffer >= 0 ? '#ecfdf5' : '#fef2f2' },
     { label: `${readyCount} ready`, color: '#4f46e5', bg: '#dbe0fe' },
     { label: `${assignedCount} assigned`, color: '#6366f1', bg: '#eef2ff' },
     ...(totalWords > 0 ? [{ label: `${totalWords.toLocaleString()} words`, color: '#6b7280', bg: '#f3f4f6' }] : []),
