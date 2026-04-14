@@ -25,6 +25,12 @@ function fireConfetti() {
 
 const CHANGELOG = [
   {
+    date: '2026-04-14',
+    changes: [
+      'Click a pinned post title on the Focus tab to jump to its card on the Board with a flash highlight',
+    ],
+  },
+  {
     date: '2026-04-11',
     changes: [
       'Added "Ask AI" button — copies full dashboard state and a prompt to clipboard for pasting into an AI assistant',
@@ -230,6 +236,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [highlightCardId, setHighlightCardId] = useState(null);
   const [addPostToDay, setAddPostToDay] = useState(null);
   const [viewYear, setViewYear] = useState(() => {
     const saved = localStorage.getItem('inkhaven-view-year');
@@ -369,10 +376,10 @@ Based on this data, please give me actionable suggestions. Consider:
         <Calendar dayMap={dayMap} currentDay={currentDay} monthInfo={monthInfo} holidays={data.holidays || []} onDayClick={setModalDay} onContextMenu={setContextMenu} />
       )}
       {tab === 'kanban' && (
-        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} />
+        <Kanban posts={posts} update={update} dragId={dragId} setDragId={setDragId} dropTarget={dropTarget} setDropTarget={setDropTarget} onCardClick={setModalPostId} onImport={() => setShowImport(true)} highlightCardId={highlightCardId} onHighlightDone={() => setHighlightCardId(null)} />
       )}
       {tab === 'focus' && (
-        <Focus pinnedPosts={pinnedPosts} update={update} onEditPost={setModalPostId} onGoToBoard={() => setTab('kanban')} />
+        <Focus pinnedPosts={pinnedPosts} update={update} onEditPost={setModalPostId} onGoToBoard={(postId) => { setHighlightCardId(postId || null); setTab('kanban'); }} />
       )}
 
       {modalDay !== null && (
@@ -974,11 +981,20 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
 
 // ─── Kanban Board ───
 
-function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, onCardClick, onImport }) {
+function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, onCardClick, onImport, highlightCardId, onHighlightDone }) {
   const EFFORTS = useContext(EffortsContext);
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
   const [search, setSearch] = useState('');
+  const highlightRef = useRef(null);
+
+  useEffect(() => {
+    if (highlightCardId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const timer = setTimeout(() => onHighlightDone(), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightCardId]);
 
   const addIdea = () => {
     const t = newTitle.trim();
@@ -1147,9 +1163,11 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
               </div>
               {col.items.map(item => {
                 const effortInfo = EFFORTS[item.effort] || EFFORTS.quick;
+                const isHighlighted = highlightCardId === item.id;
                 return (
                   <div
                     key={item.id}
+                    ref={isHighlighted ? highlightRef : undefined}
                     draggable
                     onDragStart={e => onDragStart(e, item.id)}
                     onDragEnd={onDragEnd}
@@ -1163,15 +1181,16 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
                       }
                     }}
                     style={{
-                      background: '#fff', borderRadius: 8, padding: '8px 10px', marginBottom: 6,
+                      background: isHighlighted ? '#eef2ff' : '#fff', borderRadius: 8, padding: '8px 10px', marginBottom: 6,
                       ...getEffortBorderStyle(EFFORTS, item.effort, 4),
                       boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                       opacity: dragId === item.id ? 0.4 : 1,
                       cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       borderTop: dropTarget === item.id && dragId !== item.id ? `2px solid ${col.color}` : '2px solid transparent',
-                      transition: 'opacity 0.15s',
+                      transition: 'opacity 0.15s, background 0.8s ease',
                       position: 'relative', overflow: 'hidden',
+                      ...(isHighlighted ? { boxShadow: '0 0 0 2px #6366f1', background: '#eef2ff' } : {}),
                     }}
                   >
                     <EffortBar effort={item.effort} width={4} style={{ borderRadius: 8 }} />
@@ -1284,7 +1303,13 @@ function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', margin: 0, flex: 1 }}>
-                {post.title}
+                <span
+                  onClick={() => onGoToBoard(post.id)}
+                  style={{ cursor: 'pointer', borderBottom: '1.5px dashed transparent' }}
+                  onMouseEnter={e => e.currentTarget.style.borderBottomColor = '#6366f1'}
+                  onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+                  title="Jump to card on Board"
+                >{post.title}</span>
               </h3>
               <button onClick={() => unpin(post.id)} title="Unpin" style={{
                 background: 'none', border: 'none', cursor: 'pointer', fontSize: 14,
