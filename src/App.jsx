@@ -25,6 +25,13 @@ function fireConfetti() {
 
 const CHANGELOG = [
   {
+    date: '2026-04-17',
+    changes: [
+      'Added 🎲 Surprise button — picks a random unpinned post, reveals it with a rolling animation, and pins it (replacing the last pinned post if 3 are already pinned)',
+      'Added effort multiselect filter on the Board — toggle Quick/Medium/Flagship/Unset pills to narrow the view',
+    ],
+  },
+  {
     date: '2026-04-14',
     changes: [
       'Click a pinned post title on the Focus tab to jump to its card on the Board with a flash highlight',
@@ -236,6 +243,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [randomPickId, setRandomPickId] = useState(null);
   const [highlightCardId, setHighlightCardId] = useState(null);
   const [addPostToDay, setAddPostToDay] = useState(null);
   const [viewYear, setViewYear] = useState(() => {
@@ -306,6 +314,33 @@ export default function App() {
   const buffer = readyOrPublishedScheduled - (effectiveDay > 0 ? effectiveDay - 1 : 0);
   const daysLeft = monthInfo.daysInMonth - effectiveDay;
 
+  const pickRandomAndPin = () => {
+    const eligible = posts.filter(p => p.status !== 'published' && !p.pinned);
+    if (eligible.length === 0) {
+      alert('No eligible posts to pick — every unpublished post is already pinned, or you have no posts yet.');
+      return;
+    }
+    const pick = eligible[Math.floor(Math.random() * eligible.length)];
+    update(d => {
+      const pinned = d.posts.filter(p => p.pinned);
+      if (pinned.length >= 3) {
+        const sorted = [...pinned].sort((a, b) => {
+          if (a.day != null && b.day != null) return a.day - b.day;
+          if (a.day != null) return -1;
+          if (b.day != null) return 1;
+          return 0;
+        });
+        const toUnpin = sorted[sorted.length - 1];
+        const up = d.posts.find(p => p.id === toUnpin.id);
+        if (up) up.pinned = false;
+      }
+      const target = d.posts.find(p => p.id === pick.id);
+      if (target) target.pinned = true;
+      return d;
+    });
+    setRandomPickId(pick.id);
+  };
+
   const copyForAI = ({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts }) => {
     const statusOrder = ['idea', 'prioritised', 'inProgress', 'hitWordCount', 'readyToPublish', 'published'];
     const statusLabel = { idea: 'Idea', prioritised: 'Prioritised', inProgress: 'In Progress', hitWordCount: 'Hit Word Count', readyToPublish: 'Ready to Publish', published: 'Published' };
@@ -367,7 +402,7 @@ Based on this data, please give me actionable suggestions. Consider:
   return (
     <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: tab === 'kanban' ? 1400 : tab === 'focus' ? 640 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
-      <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} onCopyForAI={() => copyForAI({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts })} />
+      <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} onCopyForAI={() => copyForAI({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts })} onPickRandom={pickRandomAndPin} />
       <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
       <Legend />
       <Tabs tab={tab} setTab={setTab} postCount={posts.length} pinnedCount={pinnedPosts.length} />
@@ -476,6 +511,15 @@ Based on this data, please give me actionable suggestions. Consider:
         <ChangelogModal onClose={() => setShowChangelog(false)} />
       )}
 
+      {randomPickId !== null && (
+        <RandomPickModal
+          posts={posts}
+          finalId={randomPickId}
+          onClose={() => setRandomPickId(null)}
+          onGoToBoard={() => { setHighlightCardId(randomPickId); setRandomPickId(null); setTab('kanban'); }}
+        />
+      )}
+
       <footer style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
         A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
       </footer>
@@ -488,7 +532,7 @@ Based on this data, please give me actionable suggestions. Consider:
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onChangeYear, onReset, colorblind, onToggleColorblind, onShowChangelog, onCopyForAI }) {
+function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onChangeYear, onReset, colorblind, onToggleColorblind, onShowChangelog, onCopyForAI, onPickRandom }) {
   const btnStyle = {
     fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
     background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
@@ -517,6 +561,7 @@ function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onC
         </p>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={onPickRandom} style={btnStyle} title="Pick a random post and pin it to Focus">🎲 Surprise</button>
         <button onClick={onCopyForAI} style={btnStyle} title="Copy dashboard state and prompt for an AI assistant">Ask AI</button>
         <button onClick={onShowChangelog} style={btnStyle}>Changelog</button>
         <button onClick={onToggleColorblind} style={{
@@ -986,7 +1031,17 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
   const [newTitle, setNewTitle] = useState('');
   const [newEffort, setNewEffort] = useState('quick');
   const [search, setSearch] = useState('');
+  const [effortFilter, setEffortFilter] = useState(() => new Set(Object.keys(EFFORTS)));
   const highlightRef = useRef(null);
+
+  const toggleEffort = (key) => {
+    setEffortFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const allEffortsOn = Object.keys(EFFORTS).every(k => effortFilter.has(k));
 
   useEffect(() => {
     if (highlightCardId && highlightRef.current) {
@@ -1078,7 +1133,11 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
   };
 
   const searchLower = search.toLowerCase().trim();
-  const filtered = searchLower ? posts.filter(p => p.title.toLowerCase().includes(searchLower)) : posts;
+  const filtered = posts.filter(p => {
+    if (searchLower && !p.title.toLowerCase().includes(searchLower)) return false;
+    if (!effortFilter.has(p.effort || 'unset')) return false;
+    return true;
+  });
   const columns = STATUS_ORDER.map(status => ({
     status,
     ...STATUSES[status],
@@ -1104,6 +1163,37 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
                 position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
                 background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af',
                 fontSize: 14, padding: '2px 4px', lineHeight: 1,
+              }}
+            >✕</button>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 10, flexShrink: 0 }}>
+          {Object.entries(EFFORTS).map(([key, info]) => {
+            const on = effortFilter.has(key);
+            return (
+              <button
+                key={key}
+                onClick={() => toggleEffort(key)}
+                title={`Toggle ${info.label}`}
+                style={{
+                  fontSize: 12, fontWeight: 600, padding: '6px 10px', borderRadius: 8,
+                  border: `1px solid ${on ? info.border : '#e5e7eb'}`,
+                  background: on ? info.bg : '#fff',
+                  color: on ? info.color : '#9ca3af',
+                  cursor: 'pointer',
+                  opacity: on ? 1 : 0.6,
+                  transition: 'all 0.15s ease',
+                }}
+              >{info.label}</button>
+            );
+          })}
+          {!allEffortsOn && (
+            <button
+              onClick={() => setEffortFilter(new Set(Object.keys(EFFORTS)))}
+              title="Reset effort filter"
+              style={{
+                fontSize: 12, padding: '6px 8px', borderRadius: 8, border: '1px solid #e5e7eb',
+                background: '#fff', color: '#9ca3af', cursor: 'pointer',
               }}
             >✕</button>
           )}
@@ -1526,6 +1616,124 @@ function ContextMenu({ x, y, post, isHoliday, onEdit, onMarkPublished, onUnassig
 }
 
 // ─── Changelog Modal ───
+
+function RandomPickModal({ posts, finalId, onClose, onGoToBoard }) {
+  const final = posts.find(p => p.id === finalId);
+  const [displayTitle, setDisplayTitle] = useState('');
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    if (!final) return;
+    const pool = posts.filter(p => p.id !== finalId).map(p => p.title).filter(Boolean);
+    if (pool.length === 0) {
+      setDisplayTitle(final.title);
+      setSettled(true);
+      fireConfetti();
+      return;
+    }
+    let iter = 0;
+    const total = 22;
+    let timer;
+    const tick = () => {
+      iter++;
+      if (iter >= total) {
+        setDisplayTitle(final.title);
+        setSettled(true);
+        fireConfetti();
+        return;
+      }
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      setDisplayTitle(next);
+      const delay = 40 + Math.pow(iter, 1.8) * 4;
+      timer = setTimeout(tick, delay);
+    };
+    timer = setTimeout(tick, 60);
+    return () => clearTimeout(timer);
+  }, [finalId]);
+
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  if (!final) return null;
+
+  const EFFORT_LABEL = { unset: 'Unset', quick: 'Quick', medium: 'Medium', flagship: 'Flagship' };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      backdropFilter: 'blur(2px)',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 480,
+        boxShadow: settled
+          ? '0 20px 60px rgba(99,102,241,0.35), 0 0 0 1px rgba(99,102,241,0.2)'
+          : '0 20px 60px rgba(0,0,0,0.2)',
+        transition: 'box-shadow 0.5s ease',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase',
+          color: settled ? '#6366f1' : '#9ca3af', fontWeight: 700, marginBottom: 12,
+          transition: 'color 0.4s ease',
+        }}>
+          {settled ? '📌 Pinned to Focus' : '🎲 Rolling…'}
+        </div>
+        <div style={{
+          minHeight: 72, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '8px 4px',
+        }}>
+          <div
+            key={`${displayTitle}-${settled}`}
+            style={{
+              fontSize: settled ? 24 : 18,
+              fontWeight: settled ? 800 : 500,
+              color: settled ? '#1f2937' : '#6b7280',
+              lineHeight: 1.3,
+              transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              transform: settled ? 'scale(1)' : 'scale(0.98)',
+              opacity: settled ? 1 : 0.85,
+              animation: settled ? 'none' : 'rpm-blur 0.12s ease-out',
+              filter: settled ? 'none' : 'blur(0.3px)',
+            }}
+          >
+            {displayTitle || final.title}
+          </div>
+        </div>
+        {settled && (
+          <div style={{
+            fontSize: 13, color: '#6b7280', marginTop: 4,
+            display: 'flex', gap: 10, justifyContent: 'center', alignItems: 'center',
+            animation: 'rpm-fadein 0.5s ease-out',
+          }}>
+            <span>{EFFORT_LABEL[final.effort] || final.effort}</span>
+            {final.wordCount ? <><span>·</span><span>{final.wordCount} words</span></> : null}
+            {final.day != null ? <><span>·</span><span>Day {final.day}</span></> : null}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
+          {settled && (
+            <button onClick={onGoToBoard} style={{
+              flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid #e5e7eb',
+              background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer',
+            }}>Show on board</button>
+          )}
+          <button onClick={onClose} style={{
+            flex: 1, padding: '11px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+            background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14,
+          }}>{settled ? 'Nice!' : 'Skip'}</button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes rpm-blur { from { opacity: 0.3; transform: translateY(-4px); } to { opacity: 0.85; transform: translateY(0); } }
+        @keyframes rpm-fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+    </div>
+  );
+}
 
 function ChangelogModal({ onClose }) {
   useEffect(() => {
