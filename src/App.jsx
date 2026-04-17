@@ -27,7 +27,7 @@ const CHANGELOG = [
   {
     date: '2026-04-17',
     changes: [
-      'Added 🎲 Surprise button — picks a random unpinned post, reveals it with a rolling animation, and pins it (replacing the last pinned post if 3 are already pinned)',
+      'Added 🎲 Surprise button — picks a random unpinned post, reveals it with a rolling animation, and pins it (replacing the last pinned post if 3 are already pinned). Excludes ready-to-publish and published posts',
       'Added effort multiselect filter on the Board — toggle Quick/Medium/Flagship/Unset pills to narrow the view',
     ],
   },
@@ -315,7 +315,7 @@ export default function App() {
   const daysLeft = monthInfo.daysInMonth - effectiveDay;
 
   const pickRandomAndPin = () => {
-    const eligible = posts.filter(p => p.status !== 'published' && !p.pinned);
+    const eligible = posts.filter(p => p.status !== 'published' && p.status !== 'readyToPublish' && !p.pinned);
     if (eligible.length === 0) {
       alert('No eligible posts to pick — every unpublished post is already pinned, or you have no posts yet.');
       return;
@@ -1632,7 +1632,7 @@ function RandomPickModal({ posts, finalId, onClose, onGoToBoard }) {
       return;
     }
     let iter = 0;
-    const total = 22;
+    const total = 12;
     let timer;
     const tick = () => {
       iter++;
@@ -1644,10 +1644,10 @@ function RandomPickModal({ posts, finalId, onClose, onGoToBoard }) {
       }
       const next = pool[Math.floor(Math.random() * pool.length)];
       setDisplayTitle(next);
-      const delay = 40 + Math.pow(iter, 1.8) * 4;
+      const delay = 25 + Math.pow(iter, 1.7) * 2.5;
       timer = setTimeout(tick, delay);
     };
-    timer = setTimeout(tick, 60);
+    timer = setTimeout(tick, 30);
     return () => clearTimeout(timer);
   }, [finalId]);
 
