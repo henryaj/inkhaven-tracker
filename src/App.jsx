@@ -31,6 +31,7 @@ const CHANGELOG = [
       'Added effort multiselect filter on the Board — toggle Quick/Medium/Flagship/Unset pills to narrow the view',
       'Added search bar in the day modal\'s "Assign an existing post" list — filter unassigned posts by title',
       'Replaced Status and Effort dropdowns in the edit form with clickable chips',
+      'Header buttons split onto two rows — Surprise/Ask AI on top, Changelog/CB/Reset smaller underneath',
     ],
   },
   {
@@ -539,6 +540,9 @@ function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onC
     fontSize: 13, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
     background: '#fff', color: '#6b7280', cursor: 'pointer', fontWeight: 500,
   };
+  const smallBtnStyle = {
+    ...btnStyle, fontSize: 11, padding: '4px 9px', borderRadius: 6,
+  };
   const pickerStyle = {
     fontSize: 15, fontWeight: 600, color: '#374151', background: 'none',
     border: 'none', cursor: 'pointer', padding: 0,
@@ -562,19 +566,23 @@ function Header({ currentDay, monthInfo, viewYear, viewMonth, onChangeMonth, onC
           Data is saved in your browser's local storage and won't sync across devices.
         </p>
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={onPickRandom} style={btnStyle} title="Pick a random post and pin it to Focus">🎲 Surprise</button>
-        <button onClick={onCopyForAI} style={btnStyle} title="Copy dashboard state and prompt for an AI assistant">Ask AI</button>
-        <button onClick={onShowChangelog} style={btnStyle}>Changelog</button>
-        <button onClick={onToggleColorblind} style={{
-          ...btnStyle,
-          background: colorblind ? '#eef2ff' : '#fff',
-          color: colorblind ? '#6366f1' : '#6b7280',
-          borderColor: colorblind ? '#c7d2fe' : '#e5e7eb',
-        }} title="Toggle colourblind-friendly palette">
-          {colorblind ? 'CB on' : 'CB off'}
-        </button>
-        <button onClick={onReset} style={btnStyle}>Reset</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={onPickRandom} style={btnStyle} title="Pick a random post and pin it to Focus">🎲 Surprise</button>
+          <button onClick={onCopyForAI} style={btnStyle} title="Copy dashboard state and prompt for an AI assistant">Ask AI</button>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={onShowChangelog} style={smallBtnStyle}>Changelog</button>
+          <button onClick={onToggleColorblind} style={{
+            ...smallBtnStyle,
+            background: colorblind ? '#eef2ff' : '#fff',
+            color: colorblind ? '#6366f1' : '#6b7280',
+            borderColor: colorblind ? '#c7d2fe' : '#e5e7eb',
+          }} title="Toggle colourblind-friendly palette">
+            {colorblind ? 'CB on' : 'CB off'}
+          </button>
+          <button onClick={onReset} style={smallBtnStyle}>Reset</button>
+        </div>
       </div>
     </div>
   );
