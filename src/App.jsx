@@ -29,6 +29,7 @@ const CHANGELOG = [
     changes: [
       'Added 🎲 Surprise button — picks a random unpinned post, reveals it with a rolling animation, and pins it (replacing the last pinned post if 3 are already pinned). Excludes ready-to-publish and published posts',
       'Added effort multiselect filter on the Board — toggle Quick/Medium/Flagship/Unset pills to narrow the view',
+      'Added search bar in the day modal\'s "Assign an existing post" list — filter unassigned posts by title',
     ],
   },
   {
@@ -854,6 +855,7 @@ function EditModal({ day, entries = [], unassigned, onClose, update }) {
 function EmptyDayForm({ day, unassigned, update, onClose }) {
   const EFFORTS = useContext(EffortsContext);
   const [title, setTitle] = useState('');
+  const [assignSearch, setAssignSearch] = useState('');
   const inputRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -904,12 +906,41 @@ function EmptyDayForm({ day, unassigned, update, onClose }) {
         ))}
       </div>
 
-      {unassigned.length > 0 && (
+      {unassigned.length > 0 && (() => {
+        const q = assignSearch.toLowerCase().trim();
+        const visible = q ? unassigned.filter(u => u.title.toLowerCase().includes(q)) : unassigned;
+        return (
         <>
           <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>Assign an existing post</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', margin: 0, flexShrink: 0 }}>Assign an existing post</p>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <input
+                value={assignSearch}
+                onChange={e => setAssignSearch(e.target.value)}
+                placeholder="Search…"
+                style={{
+                  width: '100%', padding: '5px 24px 5px 10px', borderRadius: 6,
+                  border: '1px solid #e5e7eb', fontSize: 12, outline: 'none', fontFamily: 'inherit',
+                }}
+              />
+              {assignSearch && (
+                <button
+                  onClick={() => setAssignSearch('')}
+                  style={{
+                    position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af',
+                    fontSize: 12, padding: '2px 4px', lineHeight: 1,
+                  }}
+                >✕</button>
+              )}
+            </div>
+          </div>
           <div style={{ maxHeight: 200, overflow: 'auto' }}>
-            {unassigned.map(item => (
+            {visible.length === 0 && (
+              <p style={{ fontSize: 12, color: '#9ca3af', padding: '8px 4px', margin: 0 }}>No matches.</p>
+            )}
+            {visible.map(item => (
               <div key={item.id} onClick={() => assignExisting(item.id)} style={{
                 display: 'flex', alignItems: 'center', padding: '8px 10px', borderRadius: 8,
                 cursor: 'pointer', ...getEffortBorderStyle(EFFORTS, item.effort, 4),
@@ -927,7 +958,8 @@ function EmptyDayForm({ day, unassigned, update, onClose }) {
             ))}
           </div>
         </>
-      )}
+        );
+      })()}
     </>
   );
 }
