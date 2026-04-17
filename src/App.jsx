@@ -30,6 +30,7 @@ const CHANGELOG = [
       'Added 🎲 Surprise button — picks a random unpinned post, reveals it with a rolling animation, and pins it (replacing the last pinned post if 3 are already pinned). Excludes ready-to-publish and published posts',
       'Added effort multiselect filter on the Board — toggle Quick/Medium/Flagship/Unset pills to narrow the view',
       'Added search bar in the day modal\'s "Assign an existing post" list — filter unassigned posts by title',
+      'Replaced Status and Effort dropdowns in the edit form with clickable chips',
     ],
   },
   {
@@ -1010,18 +1011,49 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
       <input value={title} onChange={e => setTitle(e.target.value)} style={inputStyle} />
 
       <label style={labelStyle}>Status</label>
-      <select value={status} onChange={e => setStatus(e.target.value)} style={inputStyle}>
-        {STATUS_ORDER.map(s => (
-          <option key={s} value={s}>{STATUSES[s].label}</option>
-        ))}
-      </select>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {STATUS_ORDER.map(s => {
+          const info = STATUSES[s];
+          const on = status === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              style={{
+                fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 999,
+                border: `1px solid ${on ? info.color : '#e5e7eb'}`,
+                background: on ? info.bg : '#fff',
+                color: on ? info.color : '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >{info.label}</button>
+          );
+        })}
+      </div>
 
       <label style={labelStyle}>Effort</label>
-      <select value={effort} onChange={e => setEffort(e.target.value)} style={inputStyle}>
-        {Object.entries(EFFORTS).map(([k, v]) => (
-          <option key={k} value={k}>{v.label}</option>
-        ))}
-      </select>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+        {Object.entries(EFFORTS).map(([k, v]) => {
+          const on = effort === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setEffort(k)}
+              style={{
+                fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 999,
+                border: `1px solid ${on ? v.border : '#e5e7eb'}`,
+                background: on ? v.bg : '#fff',
+                color: on ? v.color : '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >{v.label}</button>
+          );
+        })}
+      </div>
 
       <label style={labelStyle}>Words</label>
       <input type="number" step={100} value={wordCount} onChange={e => setWordCount(e.target.value)} style={inputStyle} />
