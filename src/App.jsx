@@ -25,6 +25,12 @@ function fireConfetti() {
 
 const CHANGELOG = [
   {
+    date: '2026-04-19',
+    changes: [
+      'Renamed "Published link" field to "URL" in the edit form',
+    ],
+  },
+  {
     date: '2026-04-17',
     changes: [
       'Added 🎲 Surprise button — picks a random unpinned post, reveals it with a rolling animation, and pins it (replacing the last pinned post if 3 are already pinned). Excludes ready-to-publish and published posts',
@@ -1066,7 +1072,7 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
       <label style={labelStyle}>Words</label>
       <input type="number" step={100} value={wordCount} onChange={e => setWordCount(e.target.value)} style={inputStyle} />
 
-      <label style={labelStyle}>Published link</label>
+      <label style={labelStyle}>URL</label>
       <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://inkhaven.blog/…" style={inputStyle} />
 
       <label style={labelStyle}>Notes</label>
