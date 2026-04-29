@@ -759,6 +759,7 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
         boxShadow: hovered ? '0 3px 12px rgba(0,0,0,0.08)' : 'none',
         transition: 'transform 0.15s ease, box-shadow 0.15s ease',
         display: 'flex', flexDirection: 'column', position: 'relative',
+        zIndex: hovered ? 10 : 'auto',
       }}
     >
       {hovered && hasPost && <DayHoverPopover entries={entries} day={day} cellRef={cellRef} EFFORTS={EFFORTS} />}
