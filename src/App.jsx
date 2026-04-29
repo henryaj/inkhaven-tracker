@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef, useLayoutEffect, createContext, useContext } from 'react';
-import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 
 const EffortsContext = createContext(null);
@@ -16,19 +15,30 @@ function PinIcon({ size = 14, filled = false, color = 'currentColor' }) {
 }
 
 function fireConfetti() {
-  confetti({
-    particleCount: 80,
-    spread: 60,
-    origin: { y: 0.7 },
-    colors: ['#6366f1', '#16a34a', '#fbbf24', '#f87171', '#34d399'],
-  });
+  const colors = ['#6366f1', '#16a34a', '#fbbf24', '#f87171', '#34d399', '#a78bfa', '#fb923c', '#ec4899'];
+  confetti({ particleCount: 200, spread: 100, startVelocity: 55, origin: { y: 0.65 }, colors });
+  confetti({ particleCount: 100, angle: 60,  spread: 70, startVelocity: 60, origin: { x: 0, y: 0.85 }, colors });
+  confetti({ particleCount: 100, angle: 120, spread: 70, startVelocity: 60, origin: { x: 1, y: 0.85 }, colors });
+  setTimeout(() => {
+    confetti({ particleCount: 160, spread: 130, startVelocity: 45, scalar: 1.2, origin: { y: 0.6 }, colors });
+  }, 250);
+  setTimeout(() => {
+    confetti({ particleCount: 80, angle: 60,  spread: 80, startVelocity: 55, origin: { x: 0, y: 0.85 }, colors });
+    confetti({ particleCount: 80, angle: 120, spread: 80, startVelocity: 55, origin: { x: 1, y: 0.85 }, colors });
+  }, 450);
+  setTimeout(() => {
+    confetti({ particleCount: 100, spread: 160, startVelocity: 35, scalar: 0.85, ticks: 240, origin: { y: 0.5 }, colors });
+  }, 700);
 }
 
 const CHANGELOG = [
   {
     date: '2026-04-29',
     changes: [
+      'Added Recap tab — celebratory month-end view of every published post, optimised for printing (🖨 Print button)',
       'Hover a calendar day to preview its posts — title, status, effort, word count, and link, with a divider between posts when the day has more than one',
+      'Fixed day-hover popover position — was drifting on scroll and overflowing the right edge for cells in the rightmost column',
+      'Made the published-confetti much more dramatic — multi-burst, side cannons, and a sustained sparkle wave',
     ],
   },
   {
@@ -418,10 +428,12 @@ Based on this data, please give me actionable suggestions. Consider:
   return (
     <EffortsContext.Provider value={EFFORTS}>
     <div style={{ maxWidth: tab === 'kanban' ? 1400 : tab === 'focus' ? 640 : 940, margin: '0 auto', padding: '20px 20px 40px', transition: 'max-width 0.2s ease' }}>
-      <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} onCopyForAI={() => copyForAI({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts })} onPickRandom={pickRandomAndPin} />
-      <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
-      <Legend />
-      <Tabs tab={tab} setTab={setTab} postCount={posts.length} pinnedCount={pinnedPosts.length} />
+      <div className="app-chrome">
+        <Header currentDay={currentDay} monthInfo={monthInfo} viewYear={viewYear} viewMonth={viewMonth} onChangeMonth={changeMonth} onChangeYear={changeYear} onReset={reset} colorblind={colorblind} onToggleColorblind={toggleColorblind} onShowChangelog={() => setShowChangelog(true)} onCopyForAI={() => copyForAI({ data, posts, monthInfo, currentDay, publishedCount, readyCount, assignedCount, totalWords, buffer, daysLeft, pinnedPosts })} onPickRandom={pickRandomAndPin} />
+        <StatsBar publishedCount={publishedCount} daysInMonth={monthInfo.daysInMonth} buffer={buffer} readyCount={readyCount} assignedCount={assignedCount} totalWords={totalWords} />
+        <Legend />
+        <Tabs tab={tab} setTab={setTab} postCount={posts.length} pinnedCount={pinnedPosts.length} publishedCount={publishedCount} />
+      </div>
 
       {tab === 'calendar' && (
         <Calendar dayMap={dayMap} currentDay={currentDay} monthInfo={monthInfo} holidays={data.holidays || []} onDayClick={setModalDay} onContextMenu={setContextMenu} />
@@ -431,6 +443,9 @@ Based on this data, please give me actionable suggestions. Consider:
       )}
       {tab === 'focus' && (
         <Focus pinnedPosts={pinnedPosts} update={update} onEditPost={setModalPostId} onGoToBoard={(postId) => { setHighlightCardId(postId || null); setTab('kanban'); }} />
+      )}
+      {tab === 'recap' && (
+        <Recap posts={posts} monthInfo={monthInfo} />
       )}
 
       {modalDay !== null && (
@@ -536,7 +551,7 @@ Based on this data, please give me actionable suggestions. Consider:
         />
       )}
 
-      <footer style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
+      <footer className="recap-print-hide" style={{ textAlign: 'center', padding: '32px 0 8px', fontSize: 13, color: '#9ca3af' }}>
         A <a href="https://blmc.dev/" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Bloom Computing</a> production by <a href="https://henrystanley.com" target="_blank" rel="noopener noreferrer" style={{ color: '#6b7280', textDecoration: 'underline' }}>Henry Stanley</a>
       </footer>
     </div>
@@ -656,7 +671,7 @@ function Legend() {
 
 // ─── Tabs ───
 
-function Tabs({ tab, setTab, postCount, pinnedCount }) {
+function Tabs({ tab, setTab, postCount, pinnedCount, publishedCount }) {
   const tabStyle = (active) => ({
     fontSize: 15, fontWeight: 600, padding: '8px 0', marginRight: 24, cursor: 'pointer',
     background: 'none', border: 'none', borderBottom: active ? '2.5px solid #6366f1' : '2.5px solid transparent',
@@ -667,6 +682,7 @@ function Tabs({ tab, setTab, postCount, pinnedCount }) {
       <button style={tabStyle(tab === 'calendar')} onClick={() => setTab('calendar')}>Calendar</button>
       <button style={tabStyle(tab === 'kanban')} onClick={() => setTab('kanban')}>Board ({postCount})</button>
       <button style={tabStyle(tab === 'focus')} onClick={() => setTab('focus')}>Focus{pinnedCount > 0 ? ` (${pinnedCount})` : ''}</button>
+      <button style={tabStyle(tab === 'recap')} onClick={() => setTab('recap')}>Recap{publishedCount > 0 ? ` (${publishedCount})` : ''}</button>
     </div>
   );
 }
@@ -742,7 +758,7 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
         transform: hovered ? 'translateY(-1px)' : 'none',
         boxShadow: hovered ? '0 3px 12px rgba(0,0,0,0.08)' : 'none',
         transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-        display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column', position: 'relative',
       }}
     >
       {hovered && hasPost && <DayHoverPopover entries={entries} day={day} cellRef={cellRef} EFFORTS={EFFORTS} />}
@@ -807,35 +823,48 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
 
 function DayHoverPopover({ entries, day, cellRef, EFFORTS }) {
   const popRef = useRef(null);
-  const [pos, setPos] = useState({ left: -9999, top: -9999, visible: false });
+  const [pos, setPos] = useState({ left: 0, flipUp: false, ready: false });
 
   useLayoutEffect(() => {
-    if (!cellRef.current || !popRef.current) return;
-    const cellRect = cellRef.current.getBoundingClientRect();
-    const popRect = popRef.current.getBoundingClientRect();
-    const margin = 8;
-    const gap = 6;
+    const cellEl = cellRef.current;
+    const popEl = popRef.current;
+    if (!cellEl || !popEl) return;
 
-    let left = cellRect.left + cellRect.width / 2 - popRect.width / 2;
-    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    // Horizontal clamp inside the calendar grid. offsetParent skips static-positioned
+    // ancestors and lands on body, so use parentElement (the grid) directly.
+    // offsetLeft / offsetWidth are CSS pixels (unaffected by body zoom).
+    const grid = cellEl.parentElement;
+    const cellWidth = cellEl.offsetWidth;
+    const popWidth = popEl.offsetWidth;
+    const cellLeftInGrid = cellEl.offsetLeft - (grid?.offsetLeft || 0);
+    const gridWidth = grid ? grid.offsetWidth : window.innerWidth;
+    const margin = 4;
 
-    let top = cellRect.bottom + gap;
-    if (top + popRect.height > window.innerHeight - margin) {
-      top = cellRect.top - popRect.height - gap;
-    }
-    top = Math.max(margin, top);
+    let popLeftInGrid = cellLeftInGrid + cellWidth / 2 - popWidth / 2;
+    if (popLeftInGrid + popWidth > gridWidth - margin) popLeftInGrid = gridWidth - margin - popWidth;
+    if (popLeftInGrid < margin) popLeftInGrid = margin;
+    const popLeftRelCell = popLeftInGrid - cellLeftInGrid;
 
-    setPos({ left, top, visible: true });
+    // Vertical flip if popover would overflow the visible viewport.
+    // getBoundingClientRect and window.innerHeight are both in viewport CSS pixels.
+    const cellRect = cellEl.getBoundingClientRect();
+    const popRect = popEl.getBoundingClientRect();
+    const flipUp = cellRect.bottom + popRect.height + 6 > window.innerHeight - margin;
+
+    setPos({ left: popLeftRelCell, flipUp, ready: true });
   }, [cellRef, entries.length]);
 
-  return createPortal(
+  return (
     <div ref={popRef} style={{
-      position: 'fixed', left: pos.left, top: pos.top, zIndex: 999,
-      visibility: pos.visible ? 'visible' : 'hidden',
-      pointerEvents: 'none',
+      position: 'absolute',
+      left: `${pos.left}px`,
+      top: pos.flipUp ? 'auto' : 'calc(100% + 6px)',
+      bottom: pos.flipUp ? 'calc(100% + 6px)' : 'auto',
+      visibility: pos.ready ? 'visible' : 'hidden',
+      zIndex: 999, pointerEvents: 'none',
       background: '#fff', borderRadius: 10, padding: '10px 12px',
       boxShadow: '0 8px 28px rgba(0,0,0,0.14)', border: '1px solid #e5e7eb',
-      width: 280, maxWidth: 'calc(100vw - 16px)',
+      width: 280,
       fontSize: 12.5, color: '#374151',
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
@@ -871,8 +900,162 @@ function DayHoverPopover({ entries, day, cellRef, EFFORTS }) {
           </div>
         );
       })}
-    </div>,
-    document.body
+    </div>
+  );
+}
+
+// ─── Recap (printable end-of-month view) ───
+
+function Recap({ posts, monthInfo }) {
+  const EFFORTS = useContext(EffortsContext);
+  const published = posts
+    .filter(p => p.status === 'published' && p.day != null)
+    .sort((a, b) => a.day - b.day);
+  const totalWords = published.reduce((s, p) => s + (p.wordCount || 0), 0);
+  const longest = published.reduce(
+    (m, p) => (p.wordCount || 0) > (m?.wordCount || 0) ? p : m,
+    null,
+  );
+  const dayMap = {};
+  for (const p of published) {
+    if (!dayMap[p.day]) dayMap[p.day] = [];
+    dayMap[p.day].push(p);
+  }
+
+  const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const cells = [];
+  for (let i = 0; i < monthInfo.firstDow; i++) cells.push(null);
+  for (let d = 1; d <= monthInfo.daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const printStyles = `
+    @media print {
+      body { background: #fff !important; zoom: 1 !important; }
+      .app-chrome, .recap-print-hide { display: none !important; }
+      .recap-day { break-inside: avoid; page-break-inside: avoid; }
+      .recap-post-item { break-inside: avoid; page-break-inside: avoid; }
+      @page { margin: 1.2cm; }
+    }
+  `;
+
+  if (published.length === 0) {
+    return (
+      <div className="recap-root">
+        <style>{printStyles}</style>
+        <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>✍️</div>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>
+            No published posts yet for {monthInfo.name} {monthInfo.year}
+          </h2>
+          <p style={{ fontSize: 15, color: '#6b7280' }}>
+            Mark a post as published and it will appear here. Keep writing!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="recap-root">
+      <style>{printStyles}</style>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 30, fontWeight: 800, color: '#1f2937', letterSpacing: '-0.02em', margin: 0 }}>
+            🎉 {monthInfo.name} {monthInfo.year}
+          </h2>
+          <p style={{ fontSize: 16, color: '#374151', marginTop: 4 }}>
+            <strong>{published.length}</strong> {published.length === 1 ? 'post' : 'posts'} published · <strong>{totalWords.toLocaleString()}</strong> words written
+          </p>
+          {longest && longest.wordCount > 0 && (
+            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+              Longest: <strong>{longest.title}</strong> ({longest.wordCount.toLocaleString()}w)
+            </p>
+          )}
+        </div>
+        <button
+          className="recap-print-hide"
+          onClick={() => window.print()}
+          style={{
+            fontSize: 14, fontWeight: 600, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca',
+            cursor: 'pointer', whiteSpace: 'nowrap',
+          }}
+        >🖨 Print</button>
+      </div>
+
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 24 }}>
+        At a glance
+      </h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+        {dayHeaders.map(h => (
+          <div key={h} style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textAlign: 'center', padding: '4px 0' }}>{h}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+        {cells.map((d, i) => d === null ? (
+          <div key={`blank-${i}`} style={{ minHeight: 78 }} />
+        ) : (
+          <div key={d} className="recap-day" style={{
+            minHeight: 78, padding: '5px 7px', borderRadius: 6,
+            border: '1px solid #e5e7eb',
+            background: dayMap[d] ? '#fff' : '#fafafa',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: dayMap[d] ? '#374151' : '#d1d5db', marginBottom: 2 }}>{d}</div>
+            {(dayMap[d] || []).map((p, idx) => (
+              <div key={p.id} style={{
+                fontSize: 10.5, fontWeight: 500, color: '#1f2937', lineHeight: 1.25,
+                marginTop: idx === 0 ? 0 : 4,
+                paddingTop: idx === 0 ? 0 : 4,
+                borderTop: idx === 0 ? 'none' : '1px solid #f0f0f0',
+              }}>
+                {p.title}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 28 }}>
+        The posts
+      </h3>
+      <ol style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {published.map(p => {
+          const effort = EFFORTS[p.effort] || EFFORTS.unset;
+          return (
+            <li key={p.id} className="recap-post-item" style={{
+              padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb',
+              background: '#fff', marginBottom: 6,
+              display: 'flex', alignItems: 'baseline', gap: 12,
+            }}>
+              <span style={{
+                fontSize: 12, fontWeight: 700, color: '#6b7280', minWidth: 48,
+              }}>Day {p.day}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1f2937', lineHeight: 1.3 }}>
+                  {p.title}
+                </div>
+                {p.link && (
+                  <a href={p.link} target="_blank" rel="noreferrer" style={{
+                    fontSize: 11, color: '#6366f1', textDecoration: 'none',
+                    display: 'block', marginTop: 2,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{p.link}</a>
+                )}
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                color: effort.color, background: effort.bg, whiteSpace: 'nowrap',
+              }}>{effort.label}</span>
+              <span style={{ fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap', minWidth: 56, textAlign: 'right' }}>
+                {(p.wordCount || 0).toLocaleString()}w
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
