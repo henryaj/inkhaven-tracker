@@ -35,6 +35,7 @@ const CHANGELOG = [
   {
     date: '2026-04-29',
     changes: [
+      'Removed effort-color stripe from calendar cells — cleaner look, effort still visible on the Board and in the day-hover popover',
       'Added Recap tab — celebratory month-end view of every published post, optimised for printing (🖨 Print button)',
       'Hover a calendar day to preview its posts — title, status, effort, word count, and link, with a divider between posts when the day has more than one',
       'Fixed day-hover popover position — was drifting on scroll and overflowing the right edge for cells in the rightmost column',
@@ -723,9 +724,6 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
   const extraCount = entries.length - 1;
   const isPublished = hasPost && primaryEntry.status === 'published';
   const isReady = hasPost && (primaryEntry.status === 'readyToPublish' || primaryEntry.status === 'published');
-  const maxEffort = hasPost ? entries.reduce((best, p) =>
-    (EFFORT_RANK[p.effort] || 0) > (EFFORT_RANK[best] || 0) ? p.effort : best
-  , entries[0].effort) : 'unset';
   const totalWords = entries.reduce((sum, p) => sum + (p.wordCount || 0), 0);
 
   let bg = '#fafafa';
@@ -754,7 +752,6 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
         minHeight: 86, borderRadius: 10, padding: '6px 8px', cursor: 'pointer',
         background: bg,
         border: isToday ? '2.5px solid #6366f1' : '1px solid #f0f0f0',
-        ...(hasPost ? getEffortBorderStyle(EFFORTS, maxEffort, 5) : {}),
         transform: hovered ? 'translateY(-1px)' : 'none',
         boxShadow: hovered ? '0 3px 12px rgba(0,0,0,0.08)' : 'none',
         transition: 'transform 0.15s ease, box-shadow 0.15s ease',
@@ -763,7 +760,6 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
       }}
     >
       {hovered && hasPost && <DayHoverPopover entries={entries} day={day} cellRef={cellRef} EFFORTS={EFFORTS} />}
-      {hasPost && <EffortBar effort={maxEffort} width={5} style={{ borderRadius: 10 }} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}{isHoliday && <span style={{ marginLeft: 2, fontSize: 11 }} title="Holiday">🏖</span>}</span>
         {hasPost && (() => {
