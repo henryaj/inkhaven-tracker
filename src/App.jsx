@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useLayoutEffect, createContext, useContext } from 'react';
+import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 
 const EffortsContext = createContext(null);
@@ -24,6 +25,12 @@ function fireConfetti() {
 }
 
 const CHANGELOG = [
+  {
+    date: '2026-04-29',
+    changes: [
+      'Hover a calendar day to preview its posts — title, status, effort, word count, and link, with a divider between posts when the day has more than one',
+    ],
+  },
   {
     date: '2026-04-19',
     changes: [
@@ -694,6 +701,7 @@ function Calendar({ dayMap, currentDay, monthInfo, holidays, onDayClick, onConte
 function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextMenu }) {
   const EFFORTS = useContext(EffortsContext);
   const [hovered, setHovered] = useState(false);
+  const cellRef = useRef(null);
   const hasPost = entries.length > 0;
   const primaryEntry = entries[0] || null;
   const extraCount = entries.length - 1;
@@ -712,6 +720,7 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
 
   return (
     <div
+      ref={cellRef}
       onClick={e => {
         if ((e.metaKey || e.ctrlKey) && hasPost && primaryEntry.link) {
           window.open(primaryEntry.link, '_blank');
@@ -736,6 +745,7 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
         display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden',
       }}
     >
+      {hovered && hasPost && <DayHoverPopover entries={entries} day={day} cellRef={cellRef} EFFORTS={EFFORTS} />}
       {hasPost && <EffortBar effort={maxEffort} width={5} style={{ borderRadius: 10 }} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 15, fontWeight: isToday ? 800 : 600, color: isToday ? '#6366f1' : '#374151' }}>{day}{isHoliday && <span style={{ marginLeft: 2, fontSize: 11 }} title="Holiday">🏖</span>}</span>
@@ -792,6 +802,77 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
         </span>
       )}
     </div>
+  );
+}
+
+function DayHoverPopover({ entries, day, cellRef, EFFORTS }) {
+  const popRef = useRef(null);
+  const [pos, setPos] = useState({ left: -9999, top: -9999, visible: false });
+
+  useLayoutEffect(() => {
+    if (!cellRef.current || !popRef.current) return;
+    const cellRect = cellRef.current.getBoundingClientRect();
+    const popRect = popRef.current.getBoundingClientRect();
+    const margin = 8;
+    const gap = 6;
+
+    let left = cellRect.left + cellRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+
+    let top = cellRect.bottom + gap;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = cellRect.top - popRect.height - gap;
+    }
+    top = Math.max(margin, top);
+
+    setPos({ left, top, visible: true });
+  }, [cellRef, entries.length]);
+
+  return createPortal(
+    <div ref={popRef} style={{
+      position: 'fixed', left: pos.left, top: pos.top, zIndex: 999,
+      visibility: pos.visible ? 'visible' : 'hidden',
+      pointerEvents: 'none',
+      background: '#fff', borderRadius: 10, padding: '10px 12px',
+      boxShadow: '0 8px 28px rgba(0,0,0,0.14)', border: '1px solid #e5e7eb',
+      width: 280, maxWidth: 'calc(100vw - 16px)',
+      fontSize: 12.5, color: '#374151',
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+        Day {day} · {entries.length} {entries.length === 1 ? 'post' : 'posts'}
+      </div>
+      {entries.map((post, idx) => {
+        const status = STATUSES[post.status] || STATUSES.idea;
+        const effort = EFFORTS[post.effort] || EFFORTS.unset;
+        return (
+          <div key={post.id}>
+            {idx > 0 && <hr style={{ border: 'none', borderTop: '1px solid #f0f0f0', margin: '8px 0' }} />}
+            <div style={{ fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 4, wordBreak: 'break-word' }}>
+              {post.title || <span style={{ color: '#9ca3af', fontStyle: 'italic', fontWeight: 500 }}>Untitled</span>}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                color: status.color, background: status.bg,
+              }}>{status.icon} {status.label}</span>
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                color: effort.color, background: effort.bg,
+              }}>{effort.label}</span>
+              {post.wordCount > 0 && (
+                <span style={{ fontSize: 11, color: '#6b7280' }}>{post.wordCount.toLocaleString()}w</span>
+              )}
+            </div>
+            {post.link && (
+              <div style={{ fontSize: 11, color: '#6366f1', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {post.link}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
   );
 }
 
