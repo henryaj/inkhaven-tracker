@@ -37,9 +37,10 @@ const CHANGELOG = [
     changes: [
       'Removed effort-color stripe from calendar cells — cleaner look, effort still visible on the Board and in the day-hover popover',
       'Added Recap tab — celebratory month-end view of every published post, optimised for printing (🖨 Print button)',
-      'Hover a calendar day to preview its posts — title, status, effort, word count, and link, with a divider between posts when the day has more than one',
+      'Hover a calendar day to preview its posts — title, status, effort, and link, with a divider between posts when the day has more than one',
       'Fixed day-hover popover position — was drifting on scroll and overflowing the right edge for cells in the rightmost column',
       'Made the published-confetti much more dramatic — multi-burst, side cannons, and a sustained sparkle wave',
+      'Removed per-post word count tracking — total words is now a single number you set by clicking it on the Recap tab. Existing per-post values are summed into the new total on first load.',
     ],
   },
   {
@@ -185,7 +186,6 @@ function migrateOldData(old) {
         title: entry.title || '',
         status: entry.status || 'idea',
         effort: entry.effort || 'quick',
-        wordCount: entry.wordCount || 0,
         link: entry.link || '',
         day: Number(dayStr),
       });
@@ -198,13 +198,13 @@ function migrateOldData(old) {
         title: item.title || '',
         status: item.status || 'idea',
         effort: item.effort || 'quick',
-        wordCount: 0,
         link: '',
         day: null,
       });
     }
   }
-  return { posts };
+  const totalWords = (old.days ? Object.values(old.days).reduce((s, e) => s + (e.wordCount || 0), 0) : 0);
+  return { posts, holidays: [], totalWords };
 }
 
 const SEED_DATA = { posts: [
@@ -228,17 +228,24 @@ const SEED_DATA = { posts: [
 
 function loadData() {
   if (new URLSearchParams(window.location.search).has('seed')) {
-    return SEED_DATA;
+    const seedTotal = SEED_DATA.posts.reduce((s, p) => s + (p.wordCount || 0), 0);
+    return { ...SEED_DATA, holidays: [], totalWords: seedTotal };
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.posts) return { holidays: [], ...parsed };
+      if (parsed.posts) {
+        const next = { holidays: [], ...parsed };
+        if (next.totalWords == null) {
+          next.totalWords = next.posts.reduce((s, p) => s + (p.wordCount || 0), 0);
+        }
+        return next;
+      }
       if (parsed.days || parsed.backlog) return migrateOldData(parsed);
     }
   } catch (e) { /* ignore */ }
-  return { posts: [], holidays: [] };
+  return { posts: [], holidays: [], totalWords: 0 };
 }
 
 // Helpers to derive views from the unified posts list
@@ -318,10 +325,17 @@ export default function App() {
 
   const reset = () => {
     if (confirm('Reset all data? This cannot be undone.')) {
-      save({ posts: [], holidays: [] });
+      save({ posts: [], holidays: [], totalWords: 0 });
       setModalDay(null);
     }
   };
+
+  const setTotalWords = useCallback((n) => {
+    update(d => {
+      d.totalWords = Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+      return d;
+    });
+  }, [update]);
 
   const posts = data.posts;
   const pinnedPosts = posts.filter(p => p.pinned).sort((a, b) => {
@@ -336,7 +350,7 @@ export default function App() {
   const readyOrPublishedScheduled = posts.filter(p => p.day != null && (p.status === 'readyToPublish' || p.status === 'published')).length;
   const readyCount = posts.filter(p => p.status === 'readyToPublish').length;
   const assignedCount = posts.filter(p => p.day != null && p.status !== 'published').length;
-  const totalWords = posts.reduce((sum, p) => sum + (p.wordCount || 0), 0);
+  const totalWords = data.totalWords ?? 0;
   const effectiveDay = currentDay || 0;
   const buffer = readyOrPublishedScheduled - (effectiveDay > 0 ? effectiveDay - 1 : 0);
   const daysLeft = monthInfo.daysInMonth - effectiveDay;
@@ -383,7 +397,6 @@ export default function App() {
       postsList += `\n### ${statusLabel[s] || s} (${grouped[s].length})\n`;
       for (const p of grouped[s]) {
         const parts = [`"${p.title}"`, effortLabel[p.effort] || p.effort];
-        if (p.wordCount) parts.push(`${p.wordCount} words`);
         if (p.day != null) parts.push(`day ${p.day}`);
         if (p.pinned) parts.push('PINNED');
         if (p.notes) parts.push(`notes: ${p.notes}`);
@@ -446,7 +459,7 @@ Based on this data, please give me actionable suggestions. Consider:
         <Focus pinnedPosts={pinnedPosts} update={update} onEditPost={setModalPostId} onGoToBoard={(postId) => { setHighlightCardId(postId || null); setTab('kanban'); }} />
       )}
       {tab === 'recap' && (
-        <Recap posts={posts} monthInfo={monthInfo} />
+        <Recap posts={posts} monthInfo={monthInfo} totalWords={totalWords} setTotalWords={setTotalWords} />
       )}
 
       {modalDay !== null && (
@@ -724,7 +737,6 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
   const extraCount = entries.length - 1;
   const isPublished = hasPost && primaryEntry.status === 'published';
   const isReady = hasPost && (primaryEntry.status === 'readyToPublish' || primaryEntry.status === 'published');
-  const totalWords = entries.reduce((sum, p) => sum + (p.wordCount || 0), 0);
 
   let bg = '#fafafa';
   if (isPublished) bg = '#f0fdf4';
@@ -805,9 +817,6 @@ function DayCell({ day, entries, isToday, isPast, isHoliday, onClick, onContextM
               }}
             >+{extraCount}</span>
           )}
-          {totalWords > 0 && (
-            <span style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{totalWords.toLocaleString()}w</span>
-          )}
         </>
       ) : (
         <span style={{ fontSize: 12, color: isPast ? '#fca5a5' : '#d1d5db', margin: 'auto', fontWeight: 500 }}>
@@ -885,9 +894,6 @@ function DayHoverPopover({ entries, day, cellRef, EFFORTS }) {
                 fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
                 color: effort.color, background: effort.bg,
               }}>{effort.label}</span>
-              {post.wordCount > 0 && (
-                <span style={{ fontSize: 11, color: '#6b7280' }}>{post.wordCount.toLocaleString()}w</span>
-              )}
             </div>
             {post.link && (
               <div style={{ fontSize: 11, color: '#6366f1', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -903,16 +909,33 @@ function DayHoverPopover({ entries, day, cellRef, EFFORTS }) {
 
 // ─── Recap (printable end-of-month view) ───
 
-function Recap({ posts, monthInfo }) {
+function Recap({ posts, monthInfo, totalWords, setTotalWords }) {
   const EFFORTS = useContext(EffortsContext);
   const published = posts
     .filter(p => p.status === 'published' && p.day != null)
     .sort((a, b) => a.day - b.day);
-  const totalWords = published.reduce((s, p) => s + (p.wordCount || 0), 0);
-  const longest = published.reduce(
-    (m, p) => (p.wordCount || 0) > (m?.wordCount || 0) ? p : m,
-    null,
-  );
+  const [editingTotal, setEditingTotal] = useState(false);
+  const [draftTotal, setDraftTotal] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editingTotal && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingTotal]);
+
+  const startEdit = () => {
+    setDraftTotal(String(totalWords));
+    setEditingTotal(true);
+  };
+  const commitEdit = () => {
+    const n = Number(draftTotal);
+    setTotalWords(Number.isFinite(n) && n >= 0 ? n : 0);
+    setEditingTotal(false);
+  };
+  const cancelEdit = () => setEditingTotal(false);
+
   const dayMap = {};
   for (const p of published) {
     if (!dayMap[p.day]) dayMap[p.day] = [];
@@ -962,13 +985,39 @@ function Recap({ posts, monthInfo }) {
             🎉 {monthInfo.name} {monthInfo.year}
           </h2>
           <p style={{ fontSize: 16, color: '#374151', marginTop: 4 }}>
-            <strong>{published.length}</strong> {published.length === 1 ? 'post' : 'posts'} published · <strong>{totalWords.toLocaleString()}</strong> words written
+            <strong>{published.length}</strong> {published.length === 1 ? 'post' : 'posts'} published ·{' '}
+            {editingTotal ? (
+              <input
+                ref={inputRef}
+                type="number"
+                min={0}
+                step={100}
+                value={draftTotal}
+                onChange={e => setDraftTotal(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+                  if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+                }}
+                className="recap-print-hide"
+                style={{
+                  fontSize: 16, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                  border: '1.5px solid #6366f1', outline: 'none', width: 110,
+                  fontFamily: 'inherit', color: '#1f2937', background: '#fff',
+                }}
+              />
+            ) : (
+              <strong
+                onClick={startEdit}
+                title="Click to edit total words"
+                style={{
+                  cursor: 'pointer',
+                  borderBottom: '1.5px dashed #c7d2fe',
+                  paddingBottom: 1,
+                }}
+              >{totalWords.toLocaleString()}</strong>
+            )}{' '}words written
           </p>
-          {longest && longest.wordCount > 0 && (
-            <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-              Longest: <strong>{longest.title}</strong> ({longest.wordCount.toLocaleString()}w)
-            </p>
-          )}
         </div>
         <button
           className="recap-print-hide"
@@ -1045,9 +1094,6 @@ function Recap({ posts, monthInfo }) {
                 fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
                 color: effort.color, background: effort.bg, whiteSpace: 'nowrap',
               }}>{effort.label}</span>
-              <span style={{ fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap', minWidth: 56, textAlign: 'right' }}>
-                {(p.wordCount || 0).toLocaleString()}w
-              </span>
             </li>
           );
         })}
@@ -1116,7 +1162,6 @@ function EditModal({ day, entries = [], unassigned, onClose, update }) {
                   <span style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{post.title}</span>
                   <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
                     {STATUSES[post.status]?.label || 'Idea'}
-                    {post.wordCount > 0 && ` · ${post.wordCount.toLocaleString()}w`}
                   </span>
                 </div>
               </div>
@@ -1142,7 +1187,7 @@ function EmptyDayForm({ day, unassigned, update, onClose }) {
     update(d => {
       d.posts.push({
         id: `post-${Date.now()}`,
-        title: t, status: 'idea', effort, wordCount: 0, link: '',
+        title: t, status: 'idea', effort, link: '',
         day,
       });
       return d;
@@ -1245,7 +1290,6 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
   const [title, setTitle] = useState(entry.title);
   const [status, setStatus] = useState(entry.status);
   const [effort, setEffort] = useState(entry.effort);
-  const [wordCount, setWordCount] = useState(entry.wordCount);
   const [link, setLink] = useState(entry.link || '');
   const [notes, setNotes] = useState(entry.notes || '');
 
@@ -1257,7 +1301,6 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
         post.title = title;
         post.status = status;
         post.effort = effort;
-        post.wordCount = Number(wordCount) || 0;
         post.link = link;
         post.notes = notes;
       }
@@ -1330,9 +1373,6 @@ function AssignedDayForm({ day, entry, update, onClose, saveRef }) {
         })}
       </div>
 
-      <label style={labelStyle}>Words</label>
-      <input type="number" step={100} value={wordCount} onChange={e => setWordCount(e.target.value)} style={inputStyle} />
-
       <label style={labelStyle}>URL</label>
       <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://inkhaven.blog/…" style={inputStyle} />
 
@@ -1396,7 +1436,7 @@ function Kanban({ posts, update, dragId, setDragId, dropTarget, setDropTarget, o
     update(d => {
       d.posts.push({
         id: `post-${Date.now()}`,
-        title: t, status: 'idea', effort: newEffort, wordCount: 0, link: '',
+        title: t, status: 'idea', effort: newEffort, link: '',
         day: null,
       });
       return d;
@@ -1717,7 +1757,6 @@ function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
       {pinnedPosts.map(post => {
         const effortInfo = EFFORTS[post.effort] || EFFORTS.quick;
         const statusInfo = STATUSES[post.status] || STATUSES.idea;
-        const progress = Math.min((post.wordCount || 0) / 500, 1);
         const nextStatusIdx = STATUS_ORDER.indexOf(post.status);
         const canAdvance = nextStatusIdx >= 0 && nextStatusIdx < STATUS_ORDER.length - 1;
         const nextStatusLabel = canAdvance ? STATUSES[STATUS_ORDER[nextStatusIdx + 1]]?.label : null;
@@ -1758,23 +1797,6 @@ function Focus({ pinnedPosts, update, onEditPost, onGoToBoard }) {
               <span style={{ fontSize: 13, fontWeight: 600, color: statusInfo.color, background: statusInfo.bg, padding: '2px 10px', borderRadius: 6 }}>
                 {statusInfo.icon} {statusInfo.label}
               </span>
-            </div>
-
-            {/* Word count progress */}
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13, color: '#6b7280' }}>Words</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: progress >= 1 ? '#059669' : '#374151' }}>
-                  {(post.wordCount || 0).toLocaleString()} / 500
-                </span>
-              </div>
-              <div style={{ height: 6, borderRadius: 3, background: '#f3f4f6', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 3, transition: 'width 0.3s ease',
-                  width: `${progress * 100}%`,
-                  background: progress >= 1 ? '#34d399' : '#6366f1',
-                }} />
-              </div>
             </div>
 
             {/* Notes */}
@@ -1842,7 +1864,7 @@ function ImportModal({ onClose, update }) {
       for (const title of lines) {
         d.posts.push({
           id: `import-${Date.now()}-${Math.random()}`,
-          title, status: 'idea', effort: 'unset', wordCount: 0, link: '',
+          title, status: 'idea', effort: 'unset', link: '',
           day: null,
         });
       }
@@ -2049,7 +2071,6 @@ function RandomPickModal({ posts, finalId, onClose, onGoToBoard }) {
             animation: 'rpm-fadein 0.5s ease-out',
           }}>
             <span>{EFFORT_LABEL[final.effort] || final.effort}</span>
-            {final.wordCount ? <><span>·</span><span>{final.wordCount} words</span></> : null}
             {final.day != null ? <><span>·</span><span>Day {final.day}</span></> : null}
           </div>
         )}
